@@ -4,10 +4,10 @@ This is a Next.js monorepo template with shadcn/ui.
 
 ## Adding components
 
-To add components to your app, run the following command at the root of your `web` app:
+To add components to your app, run the following command at the root of your `admin` app:
 
 ```bash
-pnpm dlx shadcn@latest add button -c apps/web
+pnpm dlx shadcn@latest add button -c apps/admin
 ```
 
 This will place the ui components in the `packages/ui/src/components` directory.
