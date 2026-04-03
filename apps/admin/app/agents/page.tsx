@@ -13,20 +13,8 @@ import {
 } from "@workspace/ui/components/sheet"
 import { AppShell, type AppShellData } from "@workspace/ui/components/app-shell"
 
-type CatalogAgent = {
-  id: string
-  name: string
-  type: "predefined" | "custom"
-  aiProvider: "openai"
-  aiModel: OpenAIChatModel
-  version: string
-  status: "published" | "draft" | "paused"
-  activeUsers: number
-}
-
-type OpenAIChatModel = "gpt-4o" | "gpt-4o-mini" | "gpt-4.1" | "gpt-4.1-mini"
-
-const OPENAI_CHAT_MODELS: OpenAIChatModel[] = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini"]
+import type { CatalogAgent } from "@/app/agents/data/contracts"
+import { createOpenClawAgent, fetchOpenClawAgents } from "@/app/agents/data/openclaw-agents-client"
 
 type Assignment = {
   agent: string
@@ -35,49 +23,6 @@ type Assignment = {
   plan: string
   state: "active" | "pending" | "revoked"
 }
-
-const catalog: CatalogAgent[] = [
-  {
-    id: "agt-support",
-    name: "Support Agent",
-    type: "predefined",
-    aiProvider: "openai",
-    aiModel: "gpt-4o",
-    version: "v2.3.1",
-    status: "published",
-    activeUsers: 1482,
-  },
-  {
-    id: "agt-onboarding",
-    name: "Onboarding Agent",
-    type: "predefined",
-    aiProvider: "openai",
-    aiModel: "gpt-4o-mini",
-    version: "v1.9.0",
-    status: "published",
-    activeUsers: 1034,
-  },
-  {
-    id: "agt-retention",
-    name: "Retention Agent",
-    type: "predefined",
-    aiProvider: "openai",
-    aiModel: "gpt-4.1",
-    version: "v1.5.4",
-    status: "paused",
-    activeUsers: 392,
-  },
-  {
-    id: "agt-prospecting-custom",
-    name: "Prospecting Assistant",
-    type: "custom",
-    aiProvider: "openai",
-    aiModel: "gpt-4.1-mini",
-    version: "v0.7.2",
-    status: "draft",
-    activeUsers: 0,
-  },
-]
 
 const assignments: Assignment[] = [
   {
@@ -146,47 +91,73 @@ function badgeClass(value: string) {
   return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
 }
 
+const PRIMARY_FALLBACK_MODEL = "openai-codex/gpt-5.4"
+const FALLBACK_MODELS = [PRIMARY_FALLBACK_MODEL]
+
 export default function AdminAgentsPage() {
-  const [catalogItems, setCatalogItems] = React.useState<CatalogAgent[]>(catalog)
+  const [catalogItems, setCatalogItems] = React.useState<CatalogAgent[]>([])
+  const [availableModels, setAvailableModels] = React.useState<string[]>(FALLBACK_MODELS)
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
+
   const [isCreateOpen, setIsCreateOpen] = React.useState(false)
+  const [isSaving, setIsSaving] = React.useState(false)
+  const [createError, setCreateError] = React.useState<string | null>(null)
   const [newAgentName, setNewAgentName] = React.useState("")
-  const [newAgentType, setNewAgentType] = React.useState<CatalogAgent["type"]>("custom")
-  const [newAgentProvider, setNewAgentProvider] = React.useState<CatalogAgent["aiProvider"]>("openai")
-  const [newAgentModel, setNewAgentModel] = React.useState<OpenAIChatModel>("gpt-4o")
-  const [newAgentVersion, setNewAgentVersion] = React.useState("v0.1.0")
+  const [newAgentId, setNewAgentId] = React.useState("")
+  const [newAgentModel, setNewAgentModel] = React.useState(PRIMARY_FALLBACK_MODEL)
+
+  const loadAgents = React.useCallback(async () => {
+    setIsLoading(true)
+    setLoadError(null)
+
+    try {
+      const payload = await fetchOpenClawAgents()
+      setCatalogItems(payload.agents)
+
+      const models = payload.availableModels.length > 0 ? payload.availableModels : FALLBACK_MODELS
+      setAvailableModels(models)
+
+      const preferredModel = payload.defaultModel || models[0] || PRIMARY_FALLBACK_MODEL
+      setNewAgentModel(preferredModel)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Failed to load OpenClaw agents")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    void loadAgents()
+  }, [loadAgents])
 
   const publishedCount = catalogItems.filter((item) => item.status === "published").length
   const totalAssignments = assignments.filter((item) => item.state === "active").length
 
-  const canCreate = newAgentName.trim().length > 2
+  const canCreate = newAgentName.trim().length > 2 && !isSaving
 
-  const handleCreateAgent = () => {
+  const handleCreateAgent = async () => {
     if (!canCreate) return
 
-    const slug = newAgentName
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
+    setCreateError(null)
+    setIsSaving(true)
 
-    const newItem: CatalogAgent = {
-      id: `agt-${slug || "new"}-${Date.now().toString().slice(-4)}`,
-      name: newAgentName.trim(),
-      type: newAgentType,
-      aiProvider: newAgentProvider,
-      aiModel: newAgentModel,
-      version: newAgentVersion.trim() || "v0.1.0",
-      status: "draft",
-      activeUsers: 0,
+    try {
+      const response = await createOpenClawAgent({
+        name: newAgentName.trim(),
+        id: newAgentId.trim() || undefined,
+        model: newAgentModel.trim() || undefined,
+      })
+
+      setCatalogItems((prev) => [response.agent, ...prev])
+      setNewAgentName("")
+      setNewAgentId("")
+      setIsCreateOpen(false)
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : "Failed to create agent")
+    } finally {
+      setIsSaving(false)
     }
-
-    setCatalogItems((prev) => [newItem, ...prev])
-    setNewAgentName("")
-    setNewAgentType("custom")
-    setNewAgentProvider("openai")
-    setNewAgentModel("gpt-4o")
-    setNewAgentVersion("v0.1.0")
-    setIsCreateOpen(false)
   }
 
   return (
@@ -196,7 +167,7 @@ export default function AdminAgentsPage() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Agent Management</h1>
             <p className="text-sm text-muted-foreground">
-              Hantera agent-katalogen och användarkopplingar för hela systemet.
+              Skapa OpenClaw-agenter direkt från admin och skriv dem till din OpenClaw root.
             </p>
           </div>
           <Button className="gap-2" onClick={() => setIsCreateOpen(true)}>
@@ -205,12 +176,21 @@ export default function AdminAgentsPage() {
           </Button>
         </header>
 
+        {loadError ? (
+          <div className="border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            {loadError}
+            <Button size="sm" variant="outline" className="ml-3" onClick={loadAgents}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
+
         <Sheet open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <SheetContent side="right" className="w-full border-l sm:max-w-lg">
             <SheetHeader>
-              <SheetTitle>Create New Agent</SheetTitle>
+              <SheetTitle>Create OpenClaw Agent</SheetTitle>
               <SheetDescription>
-                Configure a new catalog agent. This is a simulated flow for UX validation.
+                This writes agent config + scaffold files under your OpenClaw home folder.
               </SheetDescription>
             </SheetHeader>
             <div className="grid gap-4 px-4 pb-6">
@@ -223,51 +203,37 @@ export default function AdminAgentsPage() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs text-muted-foreground">Type</label>
-                <select
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                  value={newAgentType}
-                  onChange={(e) => setNewAgentType(e.target.value as CatalogAgent["type"])}
-                >
-                  <option value="custom">Custom</option>
-                  <option value="predefined">Predefined</option>
-                </select>
+                <label className="text-xs text-muted-foreground">Agent ID (optional)</label>
+                <Input
+                  value={newAgentId}
+                  onChange={(e) => setNewAgentId(e.target.value)}
+                  placeholder="e.g. invoice-assistant"
+                />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs text-muted-foreground">AI provider</label>
-                <select
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                  value={newAgentProvider}
-                  onChange={(e) => setNewAgentProvider(e.target.value as CatalogAgent["aiProvider"])}
-                >
-                  <option value="openai">OpenAI</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs text-muted-foreground">AI model</label>
-                <select
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                <label className="text-xs text-muted-foreground">Primary model</label>
+                <Input
+                  list="openclaw-models"
                   value={newAgentModel}
-                  onChange={(e) => setNewAgentModel(e.target.value as OpenAIChatModel)}
-                >
-                  {OPENAI_CHAT_MODELS.map((model) => (
+                  onChange={(e) => setNewAgentModel(e.target.value)}
+                  placeholder="openai-codex/gpt-5.4"
+                />
+                <datalist id="openclaw-models">
+                  {availableModels.map((model) => (
                     <option key={model} value={model}>
                       {model}
                     </option>
                   ))}
-                </select>
+                </datalist>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs text-muted-foreground">Initial version</label>
-                <Input
-                  value={newAgentVersion}
-                  onChange={(e) => setNewAgentVersion(e.target.value)}
-                  placeholder="v0.1.0"
-                />
-              </div>
+
+              {createError ? (
+                <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>
+              ) : null}
+
               <div className="mt-2 flex items-center gap-2">
-                <Button onClick={handleCreateAgent} disabled={!canCreate}>
-                  Save Agent
+                <Button onClick={() => void handleCreateAgent()} disabled={!canCreate}>
+                  {isSaving ? "Creating..." : "Create Agent"}
                 </Button>
                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                   Cancel
@@ -294,26 +260,24 @@ export default function AdminAgentsPage() {
 
         <section className="border bg-card">
           <div className="flex items-center justify-between border-b px-4 py-3">
-            <h2 className="text-base font-semibold">Agent Catalog</h2>
-            <Button variant="outline" size="sm" className="gap-1">
+            <h2 className="text-base font-semibold">OpenClaw Agent Catalog</h2>
+            <Button variant="outline" size="sm" className="gap-1" onClick={loadAgents} disabled={isLoading}>
               <Settings2 className="size-3.5" />
-              Configure
+              {isLoading ? "Loading..." : "Refresh"}
             </Button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className="w-full min-w-[860px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Agent</th>
-                  <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">AI Model</th>
-                  <th className="px-4 py-3 font-medium">Version</th>
+                  <th className="px-4 py-3 font-medium">Workspace</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Active Users</th>
                   <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+                </tr>
+              </thead>
+              <tbody>
                 {catalogItems.map((agent) => (
                   <tr key={agent.id} className="border-b last:border-b-0">
                     <td className="px-4 py-3">
@@ -322,32 +286,32 @@ export default function AdminAgentsPage() {
                         <span className="text-xs text-muted-foreground">{agent.id}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 capitalize">{agent.type}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
                         <span>{agent.aiModel}</span>
                         <span className="text-xs uppercase text-muted-foreground">{agent.aiProvider}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">{agent.version}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{agent.workspace}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex border px-2 py-0.5 text-xs capitalize ${badgeClass(agent.status)}`}>
                         {agent.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{agent.activeUsers.toLocaleString()}</td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline">
-                          Edit
-                        </Button>
-                        <Button size="sm" variant="secondary">
-                          Manage
-                        </Button>
-                      </div>
+                      <Button size="sm" variant="secondary" disabled>
+                        Managed by OpenClaw
+                      </Button>
                     </td>
                   </tr>
                 ))}
+                {catalogItems.length === 0 && !isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                      No OpenClaw agents found yet.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>

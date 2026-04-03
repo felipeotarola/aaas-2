@@ -2,6 +2,46 @@
 
 This is a Next.js monorepo template with shadcn/ui.
 
+## Supabase auth setup (admin + consumer)
+
+Both `apps/admin` and `apps/consumer` now use the same Supabase Auth project.
+
+### 1) Configure env
+
+Copy env files for both apps:
+
+```bash
+cp apps/admin/.env.example apps/admin/.env.local
+cp apps/consumer/.env.example apps/consumer/.env.local
+```
+
+Set:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+### 2) Apply DB migration
+
+Run the SQL in:
+
+- `supabase/migrations/20260403_create_profiles.sql`
+
+This creates `public.profiles` with `is_admin boolean`.
+
+### 3) Grant admin access
+
+Set `profiles.is_admin = true` for users that should access `apps/admin`.
+
+Example SQL:
+
+```sql
+update public.profiles
+set is_admin = true
+where email = 'admin@example.com';
+```
+
+Users without `is_admin=true` can still use `apps/consumer`, but are blocked from `apps/admin`.
+
 ## Adding components
 
 To add components to your app, run the following command at the root of your `admin` app:
