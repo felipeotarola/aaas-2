@@ -6,7 +6,8 @@ import { useParams } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { AppShell } from "@workspace/ui/components/app-shell"
-import { ACTIVE_AGENTS_STORAGE_KEY, getConsumerSidebar } from "../data"
+import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
+import { ACTIVE_AGENTS_STORAGE_KEY, defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
 
 type Channel = {
   key: "telegram" | "whatsapp" | "email" | "webchat"
@@ -43,6 +44,7 @@ const channels: Channel[] = [
 ]
 
 export default function ConsumerAgentDetailPage() {
+  const sidebarUser = useSidebarUser(defaultAgentsSidebarUser)
   const params = useParams<{ slug: string }>()
   const slug = params?.slug ?? "unknown-agent"
   const [isAllowed, setIsAllowed] = React.useState<boolean | null>(null)
@@ -70,7 +72,7 @@ export default function ConsumerAgentDetailPage() {
   }, [slug])
 
   return (
-    <AppShell sidebar={getConsumerSidebar("agents")}>
+    <AppShell sidebar={getConsumerSidebar("agents", sidebarUser)}>
       <main id="page-main" className="flex h-full w-full flex-1 flex-col gap-6 overflow-auto p-6 md:p-8">
         {isAllowed === false ? (
           <section className="border bg-card p-6">

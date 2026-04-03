@@ -14,13 +14,16 @@ import {
 } from "@workspace/ui/components/alert-dialog"
 import { Button } from "@workspace/ui/components/button"
 import { AppShell } from "@workspace/ui/components/app-shell"
+import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
 import {
   ACTIVE_AGENTS_STORAGE_KEY,
+  defaultAgentsSidebarUser,
   getConsumerSidebar,
   predefinedAgents,
 } from "./data"
 
 export default function ConsumerAgentsPage() {
+  const sidebarUser = useSidebarUser(defaultAgentsSidebarUser)
   const [activeIds, setActiveIds] = React.useState<Set<string>>(new Set(["consumer-support"]))
   const [pendingDeactivateId, setPendingDeactivateId] = React.useState<string | null>(null)
 
@@ -56,7 +59,7 @@ export default function ConsumerAgentsPage() {
   }
 
   return (
-    <AppShell sidebar={getConsumerSidebar("agents")}>
+    <AppShell sidebar={getConsumerSidebar("agents", sidebarUser)}>
       <main id="page-main" className="flex h-full w-full flex-1 flex-col gap-6 overflow-auto p-6 md:p-8">
         <header className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Your Agents</h1>

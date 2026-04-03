@@ -35,7 +35,16 @@ export const predefinedAgents: PredefinedAgent[] = [
 
 export const ACTIVE_AGENTS_STORAGE_KEY = "consumer_active_agents"
 
-export function getConsumerSidebar(active: "dashboard" | "agents" | "discover"): AppShellData {
+export const defaultAgentsSidebarUser: NonNullable<AppShellData["user"]> = {
+  name: "Jane Customer",
+  email: "jane@aaas.local",
+  avatar: "https://github.com/shadcn.png",
+}
+
+export function getConsumerSidebar(
+  active: "dashboard" | "agents" | "discover",
+  user: AppShellData["user"] = defaultAgentsSidebarUser,
+): AppShellData {
   return {
     logo: {
       src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/logos/shadcnblocks-logo.svg",
@@ -53,10 +62,6 @@ export function getConsumerSidebar(active: "dashboard" | "agents" | "discover"):
         ],
       },
     ],
-    user: {
-      name: "Jane Customer",
-      email: "jane@aaas.local",
-      avatar: "https://github.com/shadcn.png",
-    },
+    user,
   }
 }

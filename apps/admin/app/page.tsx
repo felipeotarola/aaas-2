@@ -1,12 +1,22 @@
 "use client"
 
+import * as React from "react"
 import {
   Bot,
   LayoutDashboard,
 } from "lucide-react"
 import { Dashboard11, type Dashboard11Data } from "@workspace/ui/components/dashboard11"
+import { useSidebarUser, type SidebarUser } from "@/lib/auth/use-sidebar-user"
+
+const defaultAdminSidebarUser: SidebarUser = {
+  name: "Admin User",
+  email: "admin@aaas.local",
+  avatar: "https://github.com/shadcn.png",
+}
 
 export default function Page() {
+  const sidebarUser = useSidebarUser(defaultAdminSidebarUser)
+
   const adminData: Partial<Dashboard11Data> = {
     headerTitle: "Admin Dashboard",
     sidebarData: {
@@ -27,9 +37,9 @@ export default function Page() {
         },
       ],
       user: {
-        name: "Admin User",
-        email: "admin@aaas.local",
-        avatar: "https://github.com/shadcn.png",
+        name: sidebarUser.name,
+        email: sidebarUser.email,
+        avatar: sidebarUser.avatar,
       },
     },
     kpiStats: [

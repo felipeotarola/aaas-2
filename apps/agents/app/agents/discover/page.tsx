@@ -3,13 +3,16 @@
 import * as React from "react"
 import { Button } from "@workspace/ui/components/button"
 import { AppShell } from "@workspace/ui/components/app-shell"
+import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
 import {
   ACTIVE_AGENTS_STORAGE_KEY,
+  defaultAgentsSidebarUser,
   getConsumerSidebar,
   predefinedAgents,
 } from "../data"
 
 export default function ConsumerDiscoverAgentsPage() {
+  const sidebarUser = useSidebarUser(defaultAgentsSidebarUser)
   const [activeIds, setActiveIds] = React.useState<Set<string>>(new Set(["consumer-support"]))
 
   React.useEffect(() => {
@@ -42,7 +45,7 @@ export default function ConsumerDiscoverAgentsPage() {
   }
 
   return (
-    <AppShell sidebar={getConsumerSidebar("discover")}>
+    <AppShell sidebar={getConsumerSidebar("discover", sidebarUser)}>
       <main id="page-main" className="flex h-full w-full flex-1 flex-col gap-6 overflow-auto p-6 md:p-8">
         <header className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Discover Agents</h1>
@@ -126,4 +129,3 @@ export default function ConsumerDiscoverAgentsPage() {
     </AppShell>
   )
 }
-

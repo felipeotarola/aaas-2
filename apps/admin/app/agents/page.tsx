@@ -12,6 +12,7 @@ import {
   SheetTitle,
 } from "@workspace/ui/components/sheet"
 import { AppShell, type AppShellData } from "@workspace/ui/components/app-shell"
+import { useSidebarUser, type SidebarUser } from "@/lib/auth/use-sidebar-user"
 
 import type { CatalogAgent } from "@/app/agents/data/contracts"
 import { createOpenClawAgent, fetchOpenClawAgents } from "@/app/agents/data/openclaw-agents-client"
@@ -55,7 +56,13 @@ const assignments: Assignment[] = [
   },
 ]
 
-const adminSidebar: AppShellData = {
+const defaultAdminSidebarUser: SidebarUser = {
+  name: "Admin User",
+  email: "admin@aaas.local",
+  avatar: "https://github.com/shadcn.png",
+}
+
+const adminSidebarBase: Omit<AppShellData, "user"> = {
   logo: {
     src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/logos/shadcnblocks-logo.svg",
     alt: "Admin Console",
@@ -71,11 +78,6 @@ const adminSidebar: AppShellData = {
       ],
     },
   ],
-  user: {
-    name: "Admin User",
-    email: "admin@aaas.local",
-    avatar: "https://github.com/shadcn.png",
-  },
 }
 
 function badgeClass(value: string) {
@@ -95,6 +97,7 @@ const PRIMARY_FALLBACK_MODEL = "openai-codex/gpt-5.4"
 const FALLBACK_MODELS = [PRIMARY_FALLBACK_MODEL]
 
 export default function AdminAgentsPage() {
+  const sidebarUser = useSidebarUser(defaultAdminSidebarUser)
   const [catalogItems, setCatalogItems] = React.useState<CatalogAgent[]>([])
   const [availableModels, setAvailableModels] = React.useState<string[]>(FALLBACK_MODELS)
   const [isLoading, setIsLoading] = React.useState(true)
@@ -135,6 +138,17 @@ export default function AdminAgentsPage() {
   const totalAssignments = assignments.filter((item) => item.state === "active").length
 
   const canCreate = newAgentName.trim().length > 2 && !isSaving
+  const adminSidebar = React.useMemo<AppShellData>(
+    () => ({
+      ...adminSidebarBase,
+      user: {
+        name: sidebarUser.name,
+        email: sidebarUser.email,
+        avatar: sidebarUser.avatar,
+      },
+    }),
+    [sidebarUser],
+  )
 
   const handleCreateAgent = async () => {
     if (!canCreate) return
