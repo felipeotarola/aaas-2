@@ -9,7 +9,7 @@ Current workspace shape:
 ```text
 apps/
   admin/
-  consumer/
+  agents/
 packages/
   ui/
   eslint-config/

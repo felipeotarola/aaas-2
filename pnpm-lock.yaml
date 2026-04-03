@@ -79,7 +79,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  apps/consumer:
+  apps/agents:
     dependencies:
       '@supabase/ssr':
         specifier: ^0.7.0

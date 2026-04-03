@@ -2,9 +2,9 @@
 
 This is a Next.js monorepo template with shadcn/ui.
 
-## Supabase auth setup (admin + consumer)
+## Supabase auth setup (admin + agents)
 
-Both `apps/admin` and `apps/consumer` now use the same Supabase Auth project.
+Both `apps/admin` and `apps/agents` now use the same Supabase Auth project.
 
 ### 1) Configure env
 
@@ -12,7 +12,7 @@ Copy env files for both apps:
 
 ```bash
 cp apps/admin/.env.example apps/admin/.env.local
-cp apps/consumer/.env.example apps/consumer/.env.local
+cp apps/agents/.env.example apps/agents/.env.local
 ```
 
 Set:
@@ -40,7 +40,7 @@ set is_admin = true
 where email = 'admin@example.com';
 ```
 
-Users without `is_admin=true` can still use `apps/consumer`, but are blocked from `apps/admin`.
+Users without `is_admin=true` can still use `apps/agents`, but are blocked from `apps/admin`.
 
 ## Adding components
 
