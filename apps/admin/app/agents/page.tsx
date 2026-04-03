@@ -17,10 +17,16 @@ type CatalogAgent = {
   id: string
   name: string
   type: "predefined" | "custom"
+  aiProvider: "openai"
+  aiModel: OpenAIChatModel
   version: string
   status: "published" | "draft" | "paused"
   activeUsers: number
 }
+
+type OpenAIChatModel = "gpt-4o" | "gpt-4o-mini" | "gpt-4.1" | "gpt-4.1-mini"
+
+const OPENAI_CHAT_MODELS: OpenAIChatModel[] = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini"]
 
 type Assignment = {
   agent: string
@@ -35,6 +41,8 @@ const catalog: CatalogAgent[] = [
     id: "agt-support",
     name: "Support Agent",
     type: "predefined",
+    aiProvider: "openai",
+    aiModel: "gpt-4o",
     version: "v2.3.1",
     status: "published",
     activeUsers: 1482,
@@ -43,6 +51,8 @@ const catalog: CatalogAgent[] = [
     id: "agt-onboarding",
     name: "Onboarding Agent",
     type: "predefined",
+    aiProvider: "openai",
+    aiModel: "gpt-4o-mini",
     version: "v1.9.0",
     status: "published",
     activeUsers: 1034,
@@ -51,6 +61,8 @@ const catalog: CatalogAgent[] = [
     id: "agt-retention",
     name: "Retention Agent",
     type: "predefined",
+    aiProvider: "openai",
+    aiModel: "gpt-4.1",
     version: "v1.5.4",
     status: "paused",
     activeUsers: 392,
@@ -59,6 +71,8 @@ const catalog: CatalogAgent[] = [
     id: "agt-prospecting-custom",
     name: "Prospecting Assistant",
     type: "custom",
+    aiProvider: "openai",
+    aiModel: "gpt-4.1-mini",
     version: "v0.7.2",
     status: "draft",
     activeUsers: 0,
@@ -137,6 +151,8 @@ export default function AdminAgentsPage() {
   const [isCreateOpen, setIsCreateOpen] = React.useState(false)
   const [newAgentName, setNewAgentName] = React.useState("")
   const [newAgentType, setNewAgentType] = React.useState<CatalogAgent["type"]>("custom")
+  const [newAgentProvider, setNewAgentProvider] = React.useState<CatalogAgent["aiProvider"]>("openai")
+  const [newAgentModel, setNewAgentModel] = React.useState<OpenAIChatModel>("gpt-4o")
   const [newAgentVersion, setNewAgentVersion] = React.useState("v0.1.0")
 
   const publishedCount = catalogItems.filter((item) => item.status === "published").length
@@ -157,6 +173,8 @@ export default function AdminAgentsPage() {
       id: `agt-${slug || "new"}-${Date.now().toString().slice(-4)}`,
       name: newAgentName.trim(),
       type: newAgentType,
+      aiProvider: newAgentProvider,
+      aiModel: newAgentModel,
       version: newAgentVersion.trim() || "v0.1.0",
       status: "draft",
       activeUsers: 0,
@@ -165,6 +183,8 @@ export default function AdminAgentsPage() {
     setCatalogItems((prev) => [newItem, ...prev])
     setNewAgentName("")
     setNewAgentType("custom")
+    setNewAgentProvider("openai")
+    setNewAgentModel("gpt-4o")
     setNewAgentVersion("v0.1.0")
     setIsCreateOpen(false)
   }
@@ -211,6 +231,30 @@ export default function AdminAgentsPage() {
                 >
                   <option value="custom">Custom</option>
                   <option value="predefined">Predefined</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-muted-foreground">AI provider</label>
+                <select
+                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                  value={newAgentProvider}
+                  onChange={(e) => setNewAgentProvider(e.target.value as CatalogAgent["aiProvider"])}
+                >
+                  <option value="openai">OpenAI</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-muted-foreground">AI model</label>
+                <select
+                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                  value={newAgentModel}
+                  onChange={(e) => setNewAgentModel(e.target.value as OpenAIChatModel)}
+                >
+                  {OPENAI_CHAT_MODELS.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -262,6 +306,7 @@ export default function AdminAgentsPage() {
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Agent</th>
                   <th className="px-4 py-3 font-medium">Type</th>
+                  <th className="px-4 py-3 font-medium">AI Model</th>
                   <th className="px-4 py-3 font-medium">Version</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Active Users</th>
@@ -278,6 +323,12 @@ export default function AdminAgentsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 capitalize">{agent.type}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col">
+                        <span>{agent.aiModel}</span>
+                        <span className="text-xs uppercase text-muted-foreground">{agent.aiProvider}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3">{agent.version}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex border px-2 py-0.5 text-xs capitalize ${badgeClass(agent.status)}`}>
