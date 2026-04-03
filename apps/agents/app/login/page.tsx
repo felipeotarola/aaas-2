@@ -8,7 +8,7 @@ import { Input } from "@workspace/ui/components/input"
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 
-export default function ConsumerLoginPage() {
+export default function AgentsLoginPage() {
   const router = useRouter()
 
   const [email, setEmail] = React.useState("")
@@ -49,8 +49,8 @@ export default function ConsumerLoginPage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center gap-6 px-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Consumer sign in</h1>
-        <p className="text-sm text-muted-foreground">Sign in to access your consumer dashboard.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Agents sign in</h1>
+        <p className="text-sm text-muted-foreground">Sign in to access your agents dashboard.</p>
       </header>
 
       {error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null}

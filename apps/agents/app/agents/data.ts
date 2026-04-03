@@ -39,9 +39,9 @@ export function getConsumerSidebar(active: "dashboard" | "agents" | "discover"):
   return {
     logo: {
       src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/logos/shadcnblocks-logo.svg",
-      alt: "Consumer App",
-      title: "Consumer App",
-      description: "Customer View",
+      alt: "Agents App",
+      title: "Agents App",
+      description: "Agents View",
     },
     navGroups: [
       {
@@ -60,4 +60,3 @@ export function getConsumerSidebar(active: "dashboard" | "agents" | "discover"):
     },
   }
 }
-

@@ -7,14 +7,14 @@ import {
 import { Dashboard11, type Dashboard11Data } from "@workspace/ui/components/dashboard11"
 
 export default function Page() {
-  const consumerData: Partial<Dashboard11Data> = {
-    headerTitle: "Consumer Dashboard",
+  const agentsData: Partial<Dashboard11Data> = {
+    headerTitle: "Agents Dashboard",
     sidebarData: {
       logo: {
         src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/logos/shadcnblocks-logo.svg",
-        alt: "Consumer App",
-        title: "Consumer App",
-        description: "Customer View",
+        alt: "Agents App",
+        title: "Agents App",
+        description: "Agents View",
       },
       navGroups: [
         {
@@ -63,6 +63,6 @@ export default function Page() {
   }
 
   return (
-    <Dashboard11 data={consumerData} />
+    <Dashboard11 data={agentsData} />
   )
 }
