@@ -1,7 +1,16 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
-  "globalEnv": ["OPENCLAW_HOME", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+  "globalEnv": [
+    "OPENCLAW_HOME",
+    "OPENCLAW_CONFIG_PATH",
+    "OPENCLAW_AGENTS_ROOT",
+    "USERPROFILE",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

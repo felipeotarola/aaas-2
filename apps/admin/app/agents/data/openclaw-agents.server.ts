@@ -49,9 +49,15 @@ type OpenClawPaths = {
   unreadableConfigPaths: string[]
 }
 
+function normalizePathInput(raw: string | undefined): string {
+  if (!raw) return ""
+  return raw.trim().replace(/^['"]|['"]$/g, "")
+}
+
 async function getOpenClawHomeCandidates(): Promise<string[]> {
   const candidates: string[] = []
-  const explicitHome = process.env.OPENCLAW_HOME?.trim()
+  const explicitHome = normalizePathInput(process.env.OPENCLAW_HOME)
+  const windows = process.platform === "win32"
 
   if (explicitHome) {
     candidates.push(explicitHome)
@@ -62,17 +68,29 @@ async function getOpenClawHomeCandidates(): Promise<string[]> {
     candidates.push(path.join(home, ".openclaw"))
   }
 
-  candidates.push("/home/node/.openclaw")
-  candidates.push("/root/.openclaw")
+  if (windows) {
+    const userProfile = normalizePathInput(process.env.USERPROFILE)
+    const localAppData = normalizePathInput(process.env.LOCALAPPDATA)
+    const appData = normalizePathInput(process.env.APPDATA)
 
-  try {
-    const homeEntries = await readdir("/home", { withFileTypes: true })
-    for (const entry of homeEntries) {
-      if (!entry.isDirectory()) continue
-      candidates.push(path.join("/home", entry.name, ".openclaw"))
+    if (userProfile) candidates.push(path.join(userProfile, ".openclaw"))
+    if (localAppData) candidates.push(path.join(localAppData, "openclaw"))
+    if (appData) candidates.push(path.join(appData, "openclaw"))
+  } else {
+    candidates.push("/home/node/.openclaw")
+    candidates.push("/root/.openclaw")
+  }
+
+  if (!windows) {
+    try {
+      const homeEntries = await readdir("/home", { withFileTypes: true })
+      for (const entry of homeEntries) {
+        if (!entry.isDirectory()) continue
+        candidates.push(path.join("/home", entry.name, ".openclaw"))
+      }
+    } catch {
+      // /home might not exist in all environments
     }
-  } catch {
-    // /home might not exist in all environments
   }
 
   return Array.from(new Set(candidates))
@@ -80,8 +98,31 @@ async function getOpenClawHomeCandidates(): Promise<string[]> {
 
 async function resolveOpenClawPaths(): Promise<OpenClawPaths> {
   const homes = await getOpenClawHomeCandidates()
-  const checkedConfigPaths = homes.map((home) => path.join(home, "openclaw.json"))
+  const explicitConfigPath = normalizePathInput(process.env.OPENCLAW_CONFIG_PATH)
+  const explicitAgentsRoot = normalizePathInput(process.env.OPENCLAW_AGENTS_ROOT)
+
+  const checkedConfigPaths = [
+    ...(explicitConfigPath ? [explicitConfigPath] : []),
+    ...homes.map((home) => path.join(home, "openclaw.json")),
+  ]
   const unreadableConfigPaths: string[] = []
+
+  if (explicitConfigPath) {
+    try {
+      await access(explicitConfigPath, fsConstants.R_OK)
+      const inferredHome = path.dirname(explicitConfigPath)
+      return {
+        configPath: explicitConfigPath,
+        agentsRoot: explicitAgentsRoot || path.join(inferredHome, "agents"),
+        checkedConfigPaths,
+        unreadableConfigPaths,
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "EACCES") {
+        unreadableConfigPaths.push(explicitConfigPath)
+      }
+    }
+  }
 
   for (const openClawHome of homes) {
     const configPath = path.join(openClawHome, "openclaw.json")
@@ -89,7 +130,7 @@ async function resolveOpenClawPaths(): Promise<OpenClawPaths> {
       await access(configPath, fsConstants.R_OK)
       return {
         configPath,
-        agentsRoot: path.join(openClawHome, "agents"),
+        agentsRoot: explicitAgentsRoot || path.join(openClawHome, "agents"),
         checkedConfigPaths,
         unreadableConfigPaths,
       }
@@ -103,8 +144,8 @@ async function resolveOpenClawPaths(): Promise<OpenClawPaths> {
 
   const fallbackHome = homes[0] ?? path.join(homedir(), ".openclaw")
   return {
-    configPath: path.join(fallbackHome, "openclaw.json"),
-    agentsRoot: path.join(fallbackHome, "agents"),
+    configPath: explicitConfigPath || path.join(fallbackHome, "openclaw.json"),
+    agentsRoot: explicitAgentsRoot || path.join(fallbackHome, "agents"),
     checkedConfigPaths,
     unreadableConfigPaths,
   }
