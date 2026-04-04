@@ -1,5 +1,6 @@
 import "server-only"
 
+import { constants as fsConstants } from "node:fs"
 import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
@@ -45,9 +46,10 @@ type OpenClawPaths = {
   configPath: string
   agentsRoot: string
   checkedConfigPaths: string[]
+  unreadableConfigPaths: string[]
 }
 
-function getOpenClawHomeCandidates(): string[] {
+async function getOpenClawHomeCandidates(): Promise<string[]> {
   const candidates: string[] = []
   const explicitHome = process.env.OPENCLAW_HOME?.trim()
 
@@ -60,25 +62,41 @@ function getOpenClawHomeCandidates(): string[] {
     candidates.push(path.join(home, ".openclaw"))
   }
 
+  candidates.push("/home/node/.openclaw")
   candidates.push("/root/.openclaw")
+
+  try {
+    const homeEntries = await readdir("/home", { withFileTypes: true })
+    for (const entry of homeEntries) {
+      if (!entry.isDirectory()) continue
+      candidates.push(path.join("/home", entry.name, ".openclaw"))
+    }
+  } catch {
+    // /home might not exist in all environments
+  }
 
   return Array.from(new Set(candidates))
 }
 
 async function resolveOpenClawPaths(): Promise<OpenClawPaths> {
-  const homes = getOpenClawHomeCandidates()
+  const homes = await getOpenClawHomeCandidates()
   const checkedConfigPaths = homes.map((home) => path.join(home, "openclaw.json"))
+  const unreadableConfigPaths: string[] = []
 
   for (const openClawHome of homes) {
     const configPath = path.join(openClawHome, "openclaw.json")
     try {
-      await access(configPath)
+      await access(configPath, fsConstants.R_OK)
       return {
         configPath,
         agentsRoot: path.join(openClawHome, "agents"),
         checkedConfigPaths,
+        unreadableConfigPaths,
       }
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "EACCES") {
+        unreadableConfigPaths.push(configPath)
+      }
       // keep scanning candidates
     }
   }
@@ -88,6 +106,7 @@ async function resolveOpenClawPaths(): Promise<OpenClawPaths> {
     configPath: path.join(fallbackHome, "openclaw.json"),
     agentsRoot: path.join(fallbackHome, "agents"),
     checkedConfigPaths,
+    unreadableConfigPaths,
   }
 }
 
@@ -163,9 +182,13 @@ async function readOpenClawConfig(paths: OpenClawPaths): Promise<OpenClawConfig>
   } catch {
     const checkedPathsText =
       paths.checkedConfigPaths.length > 1 ? ` Checked: ${paths.checkedConfigPaths.join(", ")}.` : ""
+    const unreadablePathsText =
+      paths.unreadableConfigPaths.length > 0
+        ? ` Permission denied: ${paths.unreadableConfigPaths.join(", ")}.`
+        : ""
 
     throw new OpenClawAgentsError(
-      `Unable to read OpenClaw config at ${paths.configPath}.${checkedPathsText} Set OPENCLAW_HOME if needed.`,
+      `Unable to read OpenClaw config at ${paths.configPath}.${checkedPathsText}${unreadablePathsText} Set OPENCLAW_HOME if needed.`,
       500,
     )
   }
