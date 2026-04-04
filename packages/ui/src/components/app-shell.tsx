@@ -192,10 +192,15 @@ export function AppShell({
         >
           Skip to main content
         </a>
-        <SidebarTrigger className="fixed top-3 left-3 z-[60] border bg-sidebar text-sidebar-foreground shadow-sm md:hidden" />
         <AppSidebar data={sidebar} />
         <div className="h-svh w-full overflow-hidden">
-          <div className="flex h-full w-full flex-col overflow-hidden border bg-background">{children}</div>
+          <div className="flex h-full w-full flex-col overflow-hidden border bg-background">
+            <div className="flex h-12 items-center gap-2 border-b px-3 md:hidden">
+              <SidebarTrigger className="-ml-1" />
+              <span className="text-sm font-medium">{sidebar.logo.title}</span>
+            </div>
+            {children}
+          </div>
         </div>
       </SidebarProvider>
     </TooltipProvider>
