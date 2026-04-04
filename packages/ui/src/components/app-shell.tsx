@@ -143,7 +143,7 @@ function AppSidebar({ data }: { data: AppShellData }) {
       <SidebarHeader>
         <div className="flex items-center gap-2 group-data-[collapsible=icon]:flex-col">
           <ShellLogo logo={data.logo} />
-          <SidebarTrigger className="ml-auto group-data-[collapsible=icon]:ml-0" />
+          <SidebarTrigger className="ml-auto hidden md:flex group-data-[collapsible=icon]:ml-0" />
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -192,6 +192,7 @@ export function AppShell({
         >
           Skip to main content
         </a>
+        <SidebarTrigger className="fixed top-3 left-3 z-[60] border bg-sidebar text-sidebar-foreground shadow-sm md:hidden" />
         <AppSidebar data={sidebar} />
         <div className="h-svh w-full overflow-hidden">
           <div className="flex h-full w-full flex-col overflow-hidden border bg-background">{children}</div>
@@ -200,4 +201,3 @@ export function AppShell({
     </TooltipProvider>
   )
 }
-
