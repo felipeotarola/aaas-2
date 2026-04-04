@@ -220,7 +220,11 @@ async function readOpenClawConfig(paths: OpenClawPaths): Promise<OpenClawConfig>
   let raw = ""
   try {
     raw = await readFile(paths.configPath, "utf8")
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return {}
+    }
+
     const checkedPathsText =
       paths.checkedConfigPaths.length > 1 ? ` Checked: ${paths.checkedConfigPaths.join(", ")}.` : ""
     const unreadablePathsText =
@@ -242,6 +246,7 @@ async function readOpenClawConfig(paths: OpenClawPaths): Promise<OpenClawConfig>
 }
 
 async function writeOpenClawConfig(configPath: string, config: OpenClawConfig) {
+  await mkdir(path.dirname(configPath), { recursive: true })
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8")
 }
 
