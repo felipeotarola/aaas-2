@@ -16,15 +16,8 @@ type AdminListUser = {
 }
 
 type ProfileRow = {
+  [key: string]: unknown
   id: string
-  full_name: string | null
-  name: string | null
-  is_admin: boolean | null
-}
-
-type ProfileRowWithoutFullName = {
-  id: string
-  name: string | null
   is_admin: boolean | null
 }
 
@@ -39,19 +32,26 @@ function toNameFromEmail(email: string): string {
   return fromLocal || "User"
 }
 
-function normalizeName(profile: ProfileRow | null, fallbackEmail: string): string {
-  const fullName = profile?.full_name?.trim()
-  if (fullName) return fullName
-
-  const name = profile?.name?.trim()
-  if (name) return name
-
-  return toNameFromEmail(fallbackEmail)
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
-function isMissingFullNameColumn(error: { code?: string; message: string }): boolean {
-  if (error.code === "42703") return true
-  return /column\s+profiles\.full_name\s+does not exist/i.test(error.message)
+function normalizeName(profile: ProfileRow | null, fallbackEmail: string): string {
+  const fullName = asNonEmptyString(profile?.full_name)
+  if (fullName) return fullName
+
+  const name = asNonEmptyString(profile?.name)
+  if (name) return name
+
+  const firstName = asNonEmptyString(profile?.first_name)
+  const lastName = asNonEmptyString(profile?.last_name)
+  if (firstName && lastName) return `${firstName} ${lastName}`
+  if (firstName) return firstName
+  if (lastName) return lastName
+
+  return toNameFromEmail(fallbackEmail)
 }
 
 async function ensureAdmin(): Promise<NextResponse | null> {
@@ -119,39 +119,20 @@ export async function GET() {
   const profileById = new Map<string, ProfileRow>()
 
   if (userIds.length > 0) {
-    const { data: profilesWithFullName, error: profilesWithFullNameError } = await adminClient
+    const { data: profiles, error: profilesError } = await adminClient
       .from("profiles")
-      .select("id, full_name, name, is_admin")
+      .select("*")
       .in("id", userIds)
-
-    let profiles: ProfileRow[] | null = profilesWithFullName ?? null
-    let profilesError = profilesWithFullNameError
-
-    if (profilesError && isMissingFullNameColumn(profilesError)) {
-      const { data: fallbackProfiles, error: fallbackProfilesError } = await adminClient
-        .from("profiles")
-        .select("id, name, is_admin")
-        .in("id", userIds)
-
-      if (!fallbackProfilesError) {
-        profiles = (fallbackProfiles as ProfileRowWithoutFullName[]).map((profile) => ({
-          id: profile.id,
-          full_name: null,
-          name: profile.name,
-          is_admin: profile.is_admin,
-        }))
-        profilesError = null
-      } else {
-        profilesError = fallbackProfilesError
-      }
-    }
 
     if (profilesError) {
       return NextResponse.json({ error: `Failed to load profile metadata: ${profilesError.message}` }, { status: 500 })
     }
 
     for (const profile of profiles ?? []) {
-      profileById.set(profile.id, profile)
+      const row = profile as ProfileRow
+      if (typeof row.id === "string") {
+        profileById.set(row.id, row)
+      }
     }
   }
 
