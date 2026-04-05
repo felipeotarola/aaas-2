@@ -4,7 +4,6 @@ import * as React from "react"
 import {
   Bot,
   LayoutDashboard,
-  User,
   Users,
 } from "lucide-react"
 import { Dashboard11, type Dashboard11Data } from "@workspace/ui/components/dashboard11"
@@ -36,7 +35,6 @@ export default function Page() {
             { label: "Dashboard", icon: LayoutDashboard, href: "/", isActive: true },
             { label: "Agents", icon: Bot, href: "/agents" },
             { label: "Users", icon: Users, href: "/users" },
-            { label: "Account", icon: User, href: "/account" },
           ],
         },
       ],

@@ -1,4 +1,4 @@
-import { Bot, Compass, LayoutDashboard, User } from "lucide-react"
+import { Bot, Compass, LayoutDashboard } from "lucide-react"
 import type { AppShellData } from "@workspace/ui/components/app-shell"
 
 export type PredefinedAgent = {
@@ -59,7 +59,6 @@ export function getConsumerSidebar(
           { label: "Dashboard", href: "/", icon: LayoutDashboard, isActive: active === "dashboard" },
           { label: "Agents", href: "/agents", icon: Bot, isActive: active === "agents" },
           { label: "Discover", href: "/agents/discover", icon: Compass, isActive: active === "discover" },
-          { label: "Account", href: "/account", icon: User, isActive: active === "account" },
         ],
       },
     ],

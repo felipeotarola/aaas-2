@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bot, LayoutDashboard, User, Users } from "lucide-react"
+import { Bot, LayoutDashboard, Users } from "lucide-react"
 import { AppShell, type AppShellData } from "@workspace/ui/components/app-shell"
 import { useSidebarUser, type SidebarUser } from "@/lib/auth/use-sidebar-user"
 
@@ -34,7 +34,6 @@ const adminSidebarBase: Omit<AppShellData, "user"> = {
         { label: "Dashboard", href: "/", icon: LayoutDashboard },
         { label: "Agents", href: "/agents", icon: Bot },
         { label: "Users", href: "/users", icon: Users, isActive: true },
-        { label: "Account", href: "/account", icon: User },
       ],
     },
   ],

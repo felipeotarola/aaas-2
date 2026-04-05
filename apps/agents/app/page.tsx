@@ -4,7 +4,6 @@ import * as React from "react"
 import {
   Bot,
   LayoutDashboard,
-  User,
 } from "lucide-react"
 import { Dashboard11, type Dashboard11Data } from "@workspace/ui/components/dashboard11"
 import { useSidebarUser, type SidebarUser } from "@/lib/auth/use-sidebar-user"
@@ -34,7 +33,6 @@ export default function Page() {
           items: [
             { label: "Dashboard", icon: LayoutDashboard, href: "/", isActive: true },
             { label: "Agents", icon: Bot, href: "/agents" },
-            { label: "Account", icon: User, href: "/account" },
           ],
         },
       ],
