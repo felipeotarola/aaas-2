@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bot, LayoutDashboard, Plus, Settings2, Users } from "lucide-react"
+import { Bot, LayoutDashboard, Plus, Settings2, User, Users } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import {
@@ -37,6 +37,7 @@ const adminSidebarBase: Omit<AppShellData, "user"> = {
         { label: "Dashboard", href: "/", icon: LayoutDashboard },
         { label: "Agents", href: "/agents", icon: Bot, isActive: true },
         { label: "Users", href: "/users", icon: Users },
+        { label: "Account", href: "/account", icon: User },
       ],
     },
   ],

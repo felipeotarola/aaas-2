@@ -130,9 +130,11 @@ function ShellUser({ user }: { user: NonNullable<AppShellData["user"]> }) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="mr-2 size-4" />
-              Account
+            <DropdownMenuItem asChild>
+              <a href="/account">
+                <User className="mr-2 size-4" />
+                Account
+              </a>
             </DropdownMenuItem>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
