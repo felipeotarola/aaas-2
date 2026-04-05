@@ -1,6 +1,7 @@
 "use client";
 
 import { useMotionValueEvent, useSpring } from "framer-motion";
+import { useTheme } from "next-themes";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -15,6 +16,8 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  Monitor,
+  Moon,
   Package,
   RotateCcw,
   Search,
@@ -22,6 +25,7 @@ import {
   Truck,
   User,
   Users,
+  Sun,
   Wallet,
 } from "lucide-react";
 import * as React from "react";
@@ -56,7 +60,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu";
 import { Input } from "@workspace/ui/components/input";
@@ -571,6 +580,8 @@ const NavMenuItem = ({ item }: { item: NavItem }) => {
 };
 
 const NavUser = ({ user }: { user: UserData }) => {
+  const { theme, setTheme } = useTheme();
+  const selectedTheme = theme ?? "system";
   const initials = user.name
     .split(" ")
     .map((n) => n[0])
@@ -623,6 +634,31 @@ const NavUser = ({ user }: { user: UserData }) => {
               <User className="mr-2 size-4" aria-hidden="true" />
               Account
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Sun className="mr-2 size-4" aria-hidden="true" />
+                Theme
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup
+                  value={selectedTheme}
+                  onValueChange={setTheme}
+                >
+                  <DropdownMenuRadioItem value="light">
+                    <Sun className="mr-2 size-4" aria-hidden="true" />
+                    Light
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="dark">
+                    <Moon className="mr-2 size-4" aria-hidden="true" />
+                    Dark
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="system">
+                    <Monitor className="mr-2 size-4" aria-hidden="true" />
+                    System
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
               <LogOut className="mr-2 size-4" aria-hidden="true" />
@@ -679,6 +715,7 @@ const DashboardHeader = () => {
 
   return (
     <header className="flex w-full items-center gap-3 border-b bg-background px-4 py-4 sm:px-6">
+      <SidebarTrigger className="-ml-1 md:hidden" />
       <LayoutDashboard className="size-5" aria-hidden="true" />
       <h1 className="text-base font-medium">{headerTitle}</h1>
 

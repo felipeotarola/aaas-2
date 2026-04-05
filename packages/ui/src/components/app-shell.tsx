@@ -1,14 +1,20 @@
 "use client"
 
 import * as React from "react"
-import { ChevronsUpDown, LogOut, User } from "lucide-react"
+import { ChevronsUpDown, LogOut, Monitor, Moon, Sun, User } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Avatar, AvatarFallback, AvatarImage } from "@workspace/ui/components/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import {
@@ -78,6 +84,8 @@ function ShellLogo({ logo }: { logo: AppShellData["logo"] }) {
 }
 
 function ShellUser({ user }: { user: NonNullable<AppShellData["user"]> }) {
+  const { theme, setTheme } = useTheme()
+  const selectedTheme = theme ?? "system"
   const initials = user.name
     .split(" ")
     .map((part) => part[0])
@@ -126,6 +134,28 @@ function ShellUser({ user }: { user: NonNullable<AppShellData["user"]> }) {
               <User className="mr-2 size-4" />
               Account
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Sun className="mr-2 size-4" />
+                Theme
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup value={selectedTheme} onValueChange={setTheme}>
+                  <DropdownMenuRadioItem value="light">
+                    <Sun className="mr-2 size-4" />
+                    Light
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="dark">
+                    <Moon className="mr-2 size-4" />
+                    Dark
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="system">
+                    <Monitor className="mr-2 size-4" />
+                    System
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuItem>
               <LogOut className="mr-2 size-4" />
               Log out
