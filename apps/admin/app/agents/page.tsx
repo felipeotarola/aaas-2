@@ -17,45 +17,6 @@ import { useSidebarUser, type SidebarUser } from "@/lib/auth/use-sidebar-user"
 import type { CatalogAgent } from "@/app/agents/data/contracts"
 import { createOpenClawAgent, fetchOpenClawAgents } from "@/app/agents/data/openclaw-agents-client"
 
-type Assignment = {
-  agent: string
-  userName: string
-  userEmail: string
-  plan: string
-  state: "active" | "pending" | "revoked"
-}
-
-const assignments: Assignment[] = [
-  {
-    agent: "Support Agent",
-    userName: "Jane Customer",
-    userEmail: "jane@aaas.local",
-    plan: "Pro",
-    state: "active",
-  },
-  {
-    agent: "Onboarding Agent",
-    userName: "Erik Nilsson",
-    userEmail: "erik@customer-space.app",
-    plan: "Starter",
-    state: "active",
-  },
-  {
-    agent: "Retention Agent",
-    userName: "Lina Perez",
-    userEmail: "lina@retention-user.org",
-    plan: "Pro",
-    state: "pending",
-  },
-  {
-    agent: "Support Agent",
-    userName: "Mikael Andersson",
-    userEmail: "mikael@consumer-alpha.app",
-    plan: "Business",
-    state: "revoked",
-  },
-]
-
 const defaultAdminSidebarUser: SidebarUser = {
   name: "Admin User",
   email: "admin@aaas.local",
@@ -75,6 +36,7 @@ const adminSidebarBase: Omit<AppShellData, "user"> = {
       items: [
         { label: "Dashboard", href: "/", icon: LayoutDashboard },
         { label: "Agents", href: "/agents", icon: Bot, isActive: true },
+        { label: "Users", href: "/users", icon: Users },
       ],
     },
   ],
@@ -135,8 +97,6 @@ export default function AdminAgentsPage() {
   }, [loadAgents])
 
   const publishedCount = catalogItems.filter((item) => item.status === "published").length
-  const totalAssignments = assignments.filter((item) => item.state === "active").length
-
   const canCreate = newAgentName.trim().length > 2 && !isSaving
   const adminSidebar = React.useMemo<AppShellData>(
     () => ({
@@ -257,7 +217,7 @@ export default function AdminAgentsPage() {
           </SheetContent>
         </Sheet>
 
-        <section className="grid gap-3 md:grid-cols-3">
+        <section className="grid gap-3 md:grid-cols-2">
           <article className="border bg-card p-4">
             <p className="text-xs text-muted-foreground">Catalog Size</p>
             <p className="mt-1 text-2xl font-semibold">{catalogItems.length}</p>
@@ -265,10 +225,6 @@ export default function AdminAgentsPage() {
           <article className="border bg-card p-4">
             <p className="text-xs text-muted-foreground">Published Agents</p>
             <p className="mt-1 text-2xl font-semibold">{publishedCount}</p>
-          </article>
-          <article className="border bg-card p-4">
-            <p className="text-xs text-muted-foreground">Active User Assignments</p>
-            <p className="mt-1 text-2xl font-semibold">{totalAssignments}</p>
           </article>
         </section>
 
@@ -331,40 +287,6 @@ export default function AdminAgentsPage() {
           </div>
         </section>
 
-        <section className="border bg-card">
-          <div className="flex items-center gap-2 border-b px-4 py-3">
-            <Users className="size-4" />
-            <h2 className="text-base font-semibold">User Assignments</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">Agent</th>
-                  <th className="px-4 py-3 font-medium">User</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Plan</th>
-                  <th className="px-4 py-3 font-medium">State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assignments.map((assignment, index) => (
-                  <tr key={`${assignment.userEmail}-${index}`} className="border-b last:border-b-0">
-                    <td className="px-4 py-3 font-medium">{assignment.agent}</td>
-                    <td className="px-4 py-3">{assignment.userName}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{assignment.userEmail}</td>
-                    <td className="px-4 py-3">{assignment.plan}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex border px-2 py-0.5 text-xs capitalize ${badgeClass(assignment.state)}`}>
-                        {assignment.state}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
       </main>
     </AppShell>
   )
