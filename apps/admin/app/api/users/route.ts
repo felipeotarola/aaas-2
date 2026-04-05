@@ -22,6 +22,12 @@ type ProfileRow = {
   is_admin: boolean | null
 }
 
+type ProfileRowWithoutFullName = {
+  id: string
+  name: string | null
+  is_admin: boolean | null
+}
+
 function toNameFromEmail(email: string): string {
   const localPart = email.split("@")[0] ?? ""
   const fromLocal = localPart
@@ -41,6 +47,11 @@ function normalizeName(profile: ProfileRow | null, fallbackEmail: string): strin
   if (name) return name
 
   return toNameFromEmail(fallbackEmail)
+}
+
+function isMissingFullNameColumn(error: { code?: string; message: string }): boolean {
+  if (error.code === "42703") return true
+  return /column\s+profiles\.full_name\s+does not exist/i.test(error.message)
 }
 
 async function ensureAdmin(): Promise<NextResponse | null> {
@@ -108,16 +119,35 @@ export async function GET() {
   const profileById = new Map<string, ProfileRow>()
 
   if (userIds.length > 0) {
-    const { data: profiles, error: profilesError } = await adminClient
+    const { data: profilesWithFullName, error: profilesWithFullNameError } = await adminClient
       .from("profiles")
       .select("id, full_name, name, is_admin")
       .in("id", userIds)
 
+    let profiles: ProfileRow[] | null = profilesWithFullName ?? null
+    let profilesError = profilesWithFullNameError
+
+    if (profilesError && isMissingFullNameColumn(profilesError)) {
+      const { data: fallbackProfiles, error: fallbackProfilesError } = await adminClient
+        .from("profiles")
+        .select("id, name, is_admin")
+        .in("id", userIds)
+
+      if (!fallbackProfilesError) {
+        profiles = (fallbackProfiles as ProfileRowWithoutFullName[]).map((profile) => ({
+          id: profile.id,
+          full_name: null,
+          name: profile.name,
+          is_admin: profile.is_admin,
+        }))
+        profilesError = null
+      } else {
+        profilesError = fallbackProfilesError
+      }
+    }
+
     if (profilesError) {
-      return NextResponse.json(
-        { error: `Failed to load profile metadata: ${profilesError.message}` },
-        { status: 500 },
-      )
+      return NextResponse.json({ error: `Failed to load profile metadata: ${profilesError.message}` }, { status: 500 })
     }
 
     for (const profile of profiles ?? []) {
