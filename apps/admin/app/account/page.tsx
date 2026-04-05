@@ -10,12 +10,7 @@ import { useSidebarUser, type SidebarUser } from "@/lib/auth/use-sidebar-user"
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
 
 type ProfileRow = {
-  email: string | null
-  is_admin: boolean
-  full_name: string | null
-  name: string | null
-  first_name: string | null
-  last_name: string | null
+  [key: string]: unknown
 }
 
 const defaultAdminSidebarUser: SidebarUser = {
@@ -47,6 +42,56 @@ const adminSidebarBase: Omit<AppShellData, "user"> = {
 function asNullable(value: string): string | null {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function getMissingProfilesColumn(error: { code?: string; message: string }): string | null {
+  if (error.code !== "42703") return null
+  const match = error.message.match(/column\s+profiles\.([a-z_][a-z0-9_]*)\s+does not exist/i)
+  return match?.[1] ?? null
+}
+
+async function upsertProfileWithColumnFallback(
+  supabase: ReturnType<typeof createSupabaseBrowserClient>,
+  args: {
+    id: string
+    email: string | null
+    fullName: string
+    displayName: string
+    firstName: string
+    lastName: string
+  },
+) {
+  const optionalFields = ["full_name", "name", "first_name", "last_name"] as const
+  let activeFields = [...optionalFields]
+
+  while (true) {
+    const payload: Record<string, string | null> = {
+      id: args.id,
+      email: args.email,
+    }
+
+    if (activeFields.includes("full_name")) payload.full_name = asNullable(args.fullName)
+    if (activeFields.includes("name")) payload.name = asNullable(args.displayName)
+    if (activeFields.includes("first_name")) payload.first_name = asNullable(args.firstName)
+    if (activeFields.includes("last_name")) payload.last_name = asNullable(args.lastName)
+
+    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" })
+    if (!error) return payload
+
+    const missingColumn = getMissingProfilesColumn(error)
+    if (missingColumn && activeFields.includes(missingColumn as (typeof optionalFields)[number])) {
+      activeFields = activeFields.filter((field) => field !== missingColumn)
+      continue
+    }
+
+    throw new Error(error.message)
+  }
 }
 
 export default function AdminAccountPage() {
@@ -103,18 +148,18 @@ export default function AdminAccountPage() {
 
       const { data: profile, error: profileLoadError } = await supabase
         .from("profiles")
-        .select("email, is_admin, full_name, name, first_name, last_name")
+        .select("*")
         .eq("id", user.id)
         .maybeSingle<ProfileRow>()
 
       if (mounted) {
         setUserId(user.id)
-        setEmail(profile?.email ?? user.email ?? "")
+        setEmail(asNonEmptyString(profile?.email) ?? user.email ?? "")
         setIsAdmin(profile?.is_admin === true)
-        setFullName(profile?.full_name ?? "")
-        setDisplayName(profile?.name ?? "")
-        setFirstName(profile?.first_name ?? "")
-        setLastName(profile?.last_name ?? "")
+        setFullName(asNonEmptyString(profile?.full_name) ?? "")
+        setDisplayName(asNonEmptyString(profile?.name) ?? "")
+        setFirstName(asNonEmptyString(profile?.first_name) ?? "")
+        setLastName(asNonEmptyString(profile?.last_name) ?? "")
 
         if (profileLoadError) {
           setProfileError(profileLoadError.message)
@@ -148,29 +193,21 @@ export default function AdminAccountPage() {
         throw new Error("You need to sign in again.")
       }
 
-      const profilePayload = {
+      const profilePayload = await upsertProfileWithColumnFallback(supabase, {
         id: user.id,
         email: user.email ?? null,
-        full_name: asNullable(fullName),
-        name: asNullable(displayName),
-        first_name: asNullable(firstName),
-        last_name: asNullable(lastName),
-      }
-
-      const { error: profileSaveError } = await supabase
-        .from("profiles")
-        .upsert(profilePayload, { onConflict: "id" })
-
-      if (profileSaveError) {
-        throw new Error(profileSaveError.message)
-      }
+        fullName,
+        displayName,
+        firstName,
+        lastName,
+      })
 
       const { error: authSaveError } = await supabase.auth.updateUser({
         data: {
-          full_name: profilePayload.full_name,
-          name: profilePayload.name,
-          first_name: profilePayload.first_name,
-          last_name: profilePayload.last_name,
+          full_name: profilePayload.full_name ?? null,
+          name: profilePayload.name ?? null,
+          first_name: profilePayload.first_name ?? null,
+          last_name: profilePayload.last_name ?? null,
         },
       })
 
