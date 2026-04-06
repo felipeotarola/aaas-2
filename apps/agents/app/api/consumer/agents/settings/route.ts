@@ -55,6 +55,8 @@ export async function PUT(request: Request) {
     const payload = await upsertConsumerAgentSetting({
       supabase: auth.supabase,
       userId: auth.userId,
+      userEmail: auth.userEmail,
+      userMetadata: auth.userMetadata,
       input,
     })
 
@@ -77,5 +79,10 @@ async function getAuthenticatedRequestContext() {
   return {
     supabase,
     userId: user.id,
+    userEmail: user.email ?? null,
+    userMetadata:
+      user.user_metadata && typeof user.user_metadata === "object"
+        ? (user.user_metadata as Record<string, unknown>)
+        : null,
   }
 }

@@ -1,5 +1,9 @@
 import "server-only"
 
+import { mkdir, readFile } from "node:fs/promises"
+import { homedir } from "node:os"
+import path from "node:path"
+
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js"
 
 import type {
@@ -17,6 +21,16 @@ type ConsumerAgentSettingRow = {
   updated_at: string
 }
 
+type UserMetadata = Record<string, unknown> | null | undefined
+
+type OpenClawConfig = {
+  agents?: {
+    defaults?: {
+      workspace?: unknown
+    }
+  }
+}
+
 const AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i
 
 export class ConsumerAgentSettingsError extends Error {
@@ -26,6 +40,23 @@ export class ConsumerAgentSettingsError extends Error {
   ) {
     super(message)
   }
+}
+
+function normalizePathInput(raw: string | undefined): string {
+  if (!raw) return ""
+  return raw.trim().replace(/^['"]|['"]$/g, "")
+}
+
+function sanitizeWorkspacePart(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "")
+
+  return normalized.slice(0, 96)
 }
 
 function normalizeAgentId(raw: string): string {
@@ -51,8 +82,102 @@ function asPlainObject(value: unknown): Record<string, unknown> {
 
 function normalizeWorkspaceRef(value: unknown): string | null {
   if (typeof value !== "string") return null
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
+
+  const slug = sanitizeWorkspacePart(value)
+  return slug.length > 0 ? slug : null
+}
+
+function getEmailLocalPart(email: string | null | undefined): string | null {
+  if (!email) return null
+  const [localPart] = email.split("@")
+  if (!localPart) return null
+
+  const normalized = sanitizeWorkspacePart(localPart)
+  return normalized.length > 0 ? normalized : null
+}
+
+function getMetadataName(metadata: UserMetadata): string | null {
+  if (!metadata || typeof metadata !== "object") return null
+
+  const candidate = metadata.full_name ?? metadata.name
+  if (typeof candidate !== "string") return null
+
+  const normalized = sanitizeWorkspacePart(candidate)
+  return normalized.length > 0 ? normalized : null
+}
+
+function buildWorkspaceRef(args: {
+  userId: string
+  userEmail?: string | null
+  userMetadata?: UserMetadata
+  agentId: string
+}): string {
+  const userSegment =
+    getEmailLocalPart(args.userEmail) ?? getMetadataName(args.userMetadata) ?? sanitizeWorkspacePart(args.userId)
+
+  const agentSegment = sanitizeWorkspacePart(args.agentId)
+
+  return `${userSegment}-${agentSegment}`.slice(0, 96)
+}
+
+function getOpenClawHomeCandidates(): string[] {
+  const explicitHome = normalizePathInput(process.env.OPENCLAW_HOME)
+  const home = normalizePathInput(homedir())
+
+  return Array.from(
+    new Set(
+      [
+        explicitHome,
+        explicitHome ? path.join(explicitHome, ".openclaw") : "",
+        home,
+        home ? path.join(home, ".openclaw") : "",
+        "/home/node",
+        "/home/node/.openclaw",
+        "/root",
+        "/root/.openclaw",
+      ].filter(Boolean),
+    ),
+  )
+}
+
+function toOpenClawHome(candidate: string): string {
+  return candidate.endsWith(`${path.sep}.openclaw`) ? candidate : path.join(candidate, ".openclaw")
+}
+
+async function resolveWorkspaceRootFromConfig(openClawHome: string): Promise<string | null> {
+  const configPath = path.join(openClawHome, "openclaw.json")
+
+  try {
+    const raw = await readFile(configPath, "utf8")
+    const parsed = JSON.parse(raw) as OpenClawConfig
+    const workspace = parsed.agents?.defaults?.workspace
+
+    if (typeof workspace === "string" && workspace.trim().length > 0) {
+      return workspace.trim()
+    }
+  } catch {
+    // Ignore missing/unreadable config and fall back
+  }
+
+  return null
+}
+
+async function resolveWorkspaceRoot(): Promise<string> {
+  for (const candidate of getOpenClawHomeCandidates()) {
+    const openClawHome = toOpenClawHome(candidate)
+    const fromConfig = await resolveWorkspaceRootFromConfig(openClawHome)
+    if (fromConfig) return fromConfig
+  }
+
+  const defaultHome = toOpenClawHome(getOpenClawHomeCandidates()[0] ?? homedir())
+  return path.join(defaultHome, "workspace")
+}
+
+async function ensureWorkspaceDirectory(workspaceRef: string): Promise<void> {
+  const workspaceRoot = await resolveWorkspaceRoot()
+  const workspacePath = path.join(workspaceRoot, workspaceRef)
+
+  await mkdir(workspacePath, { recursive: true })
 }
 
 function toSetting(row: ConsumerAgentSettingRow): ConsumerAgentSetting {
@@ -101,6 +226,8 @@ export async function listConsumerAgentSettings(args: {
 export async function upsertConsumerAgentSetting(args: {
   supabase: SupabaseClient
   userId: string
+  userEmail?: string | null
+  userMetadata?: UserMetadata
   input: UpsertConsumerAgentSettingRequest
 }): Promise<UpsertConsumerAgentSettingResponse> {
   const agentId = normalizeAgentId(args.input.agentId)
@@ -130,10 +257,30 @@ export async function upsertConsumerAgentSetting(args: {
       ? asPlainObject(existing?.tool_overrides)
       : asPlainObject(args.input.toolOverrides)
 
-  const workspaceRef =
+  let workspaceRef =
     args.input.workspaceRef === undefined
       ? normalizeWorkspaceRef(existing?.workspace_ref)
       : normalizeWorkspaceRef(args.input.workspaceRef)
+
+  if (!workspaceRef && args.input.isActive) {
+    workspaceRef = buildWorkspaceRef({
+      userId: args.userId,
+      userEmail: args.userEmail,
+      userMetadata: args.userMetadata,
+      agentId,
+    })
+  }
+
+  if (workspaceRef && args.input.isActive) {
+    try {
+      await ensureWorkspaceDirectory(workspaceRef)
+    } catch {
+      throw new ConsumerAgentSettingsError(
+        "Failed to create consumer workspace directory for this agent.",
+        500,
+      )
+    }
+  }
 
   const { data, error } = await args.supabase
     .from("consumer_agent_settings")
