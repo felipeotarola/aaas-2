@@ -31,7 +31,14 @@ type OpenClawConfig = {
   [key: string]: unknown
 }
 
+type OpenClawConfigBridgePayload = {
+  config?: unknown
+  maskedConfig?: unknown
+}
+
 const AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i
+const DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL = "http://127.0.0.1:4311/api/openclaw/config"
+const OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS = 1_500
 
 export class OpenClawAgentsError extends Error {
   constructor(
@@ -52,6 +59,55 @@ type OpenClawPaths = {
 function normalizePathInput(raw: string | undefined): string {
   if (!raw) return ""
   return raw.trim().replace(/^['"]|['"]$/g, "")
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function shouldDisableBridgeFallback(): boolean {
+  const raw = normalizePathInput(process.env.OPENCLAW_DISABLE_CONFIG_BRIDGE_FALLBACK).toLowerCase()
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
+}
+
+function getOpenClawConfigBridgeCandidates(): string[] {
+  const explicitBridgeUrl = normalizePathInput(process.env.OPENCLAW_CONFIG_BRIDGE_URL)
+  if (explicitBridgeUrl) return [explicitBridgeUrl]
+  if (shouldDisableBridgeFallback()) return []
+  return [DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL]
+}
+
+async function readOpenClawConfigFromBridge(): Promise<OpenClawConfig | null> {
+  const bridgeCandidates = getOpenClawConfigBridgeCandidates()
+
+  for (const bridgeUrl of bridgeCandidates) {
+    try {
+      const response = await fetch(bridgeUrl, {
+        method: "GET",
+        cache: "no-store",
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS),
+      })
+
+      if (!response.ok) continue
+
+      const payload = (await response.json()) as OpenClawConfigBridgePayload | OpenClawConfig
+      if (!isRecord(payload)) continue
+
+      const candidateConfig =
+        (isRecord(payload.maskedConfig) ? payload.maskedConfig : null) ??
+        (isRecord(payload.config) ? payload.config : null) ??
+        payload
+
+      if (isRecord(candidateConfig)) {
+        return candidateConfig as OpenClawConfig
+      }
+    } catch {
+      // optional fallback path; ignore and keep probing
+    }
+  }
+
+  return null
 }
 
 async function getOpenClawHomeCandidates(): Promise<string[]> {
@@ -222,6 +278,8 @@ async function readOpenClawConfig(paths: OpenClawPaths): Promise<OpenClawConfig>
     raw = await readFile(paths.configPath, "utf8")
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      const bridgeConfig = await readOpenClawConfigFromBridge()
+      if (bridgeConfig) return bridgeConfig
       return {}
     }
 
