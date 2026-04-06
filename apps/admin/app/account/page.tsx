@@ -90,7 +90,6 @@ async function upsertProfileWithColumnFallback(
 
   while (true) {
     const payload: Record<string, string | null> = {
-      id: args.id,
       email: args.email,
     }
 
@@ -99,8 +98,17 @@ async function upsertProfileWithColumnFallback(
     if (activeFields.includes("first_name")) payload.first_name = asNullable(args.firstName)
     if (activeFields.includes("last_name")) payload.last_name = asNullable(args.lastName)
 
-    const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" })
-    if (!error) return payload
+    const { data, error } = await supabase
+      .from("profiles")
+      .update(payload)
+      .eq("id", args.id)
+      .select("id")
+      .maybeSingle<{ id: string }>()
+
+    if (!error) {
+      if (data) return payload
+      throw new Error("Profile row not found. Sign out and sign in again.")
+    }
 
     const missingColumn = getMissingProfilesColumn(error)
     if (missingColumn && activeFields.includes(missingColumn as (typeof optionalFields)[number])) {
