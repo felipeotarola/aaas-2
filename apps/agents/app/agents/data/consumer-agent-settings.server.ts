@@ -112,12 +112,13 @@ function buildWorkspaceRef(args: {
   userMetadata?: UserMetadata
   agentId: string
 }): string {
-  const userSegment =
-    getEmailLocalPart(args.userEmail) ?? getMetadataName(args.userMetadata) ?? sanitizeWorkspacePart(args.userId)
+  const preferredUserSegment =
+    getEmailLocalPart(args.userEmail) ?? getMetadataName(args.userMetadata) ?? "consumer"
 
+  const userIdSegment = sanitizeWorkspacePart(args.userId).slice(0, 12)
   const agentSegment = sanitizeWorkspacePart(args.agentId)
 
-  return `${userSegment}-${agentSegment}`.slice(0, 96)
+  return `${preferredUserSegment}-${userIdSegment}-${agentSegment}`.slice(0, 96)
 }
 
 function getOpenClawHomeCandidates(): string[] {
