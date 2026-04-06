@@ -1,38 +1,6 @@
 import { Bot, Compass, LayoutDashboard } from "lucide-react"
 import type { AppShellData } from "@workspace/ui/components/app-shell"
 
-export type PredefinedAgent = {
-  id: string
-  name: string
-  category: string
-  description: string
-  capabilities: string[]
-}
-
-export const predefinedAgents: PredefinedAgent[] = [
-  {
-    id: "consumer-support",
-    name: "Support Agent",
-    category: "Customer Care",
-    description: "Svarar på vanliga frågor, eskalerar ärenden och följer upp öppna case.",
-    capabilities: ["FAQ", "Escalation", "Case Follow-up"],
-  },
-  {
-    id: "consumer-onboarding",
-    name: "Onboarding Agent",
-    category: "Lifecycle",
-    description: "Guidar nya användare genom setup, aktivering och första värdeflödet.",
-    capabilities: ["Welcome Flow", "Activation Nudges", "Usage Tips"],
-  },
-  {
-    id: "consumer-retention",
-    name: "Retention Agent",
-    category: "Growth",
-    description: "Identifierar churn-risk och triggar relevanta retention-flöden.",
-    capabilities: ["Risk Scoring", "Re-engagement", "Smart Timing"],
-  },
-]
-
 export const ACTIVE_AGENTS_STORAGE_KEY = "consumer_active_agents"
 
 export const defaultAgentsSidebarUser: NonNullable<AppShellData["user"]> = {

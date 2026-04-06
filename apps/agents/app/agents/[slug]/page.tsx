@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { Bot, CheckCircle2, MessageCircle, Send, Smartphone } from "lucide-react"
 import { useParams } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
@@ -83,7 +84,7 @@ export default function ConsumerAgentDetailPage() {
             </p>
             <div className="mt-4">
               <Button asChild>
-                <a href="/agents">Go to Agents</a>
+                <Link href="/agents">Go to Agents</Link>
               </Button>
             </div>
           </section>
@@ -99,9 +100,9 @@ export default function ConsumerAgentDetailPage() {
           <>
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <a href="/agents" className="text-xs text-muted-foreground underline underline-offset-4">
+            <Link href="/agents" className="text-xs text-muted-foreground underline underline-offset-4">
               Back to agents
-            </a>
+            </Link>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">{displayName}</h1>
             <p className="text-sm text-muted-foreground">
               Configure channels and client integrations for this agent.

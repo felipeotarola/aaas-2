@@ -25,10 +25,29 @@ function asNonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function getMissingProfilesColumn(error: { code?: string; message: string }): string | null {
-  if (error.code !== "42703") return null
-  const match = error.message.match(/column\s+profiles\.([a-z_][a-z0-9_]*)\s+does not exist/i)
-  return match?.[1] ?? null
+function getMissingProfilesColumn(error: {
+  code?: string | null
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+}): string | null {
+  const text = [error.message, error.details, error.hint]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .join(" | ")
+
+  if (!text) return null
+
+  const patterns = [
+    /column\s+profiles\.([a-z_][a-z0-9_]*)\s+does not exist/i,
+    /could not find the ['"]([a-z_][a-z0-9_]*)['"] column of ['"]profiles['"] in the schema cache/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (match?.[1]) return match[1]
+  }
+
+  return null
 }
 
 async function upsertProfileWithColumnFallback(
