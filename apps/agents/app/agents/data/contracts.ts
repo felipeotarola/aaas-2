@@ -15,3 +15,26 @@ export type ListOpenClawAgentsResponse = {
   defaultModel: string | null
   availableModels: string[]
 }
+
+export type ConsumerAgentSetting = {
+  agentId: string
+  isActive: boolean
+  toolOverrides: Record<string, unknown>
+  workspaceRef: string | null
+  updatedAt: string
+}
+
+export type ListConsumerAgentSettingsResponse = {
+  settings: ConsumerAgentSetting[]
+}
+
+export type UpsertConsumerAgentSettingRequest = {
+  agentId: string
+  isActive: boolean
+  toolOverrides?: Record<string, unknown>
+  workspaceRef?: string | null
+}
+
+export type UpsertConsumerAgentSettingResponse = {
+  setting: ConsumerAgentSetting
+}

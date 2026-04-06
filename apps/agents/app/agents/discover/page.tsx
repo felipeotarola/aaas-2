@@ -5,10 +5,11 @@ import Link from "next/link"
 import { Settings2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { AppShell } from "@workspace/ui/components/app-shell"
-import type { CatalogAgent } from "@/app/agents/data/contracts"
+import { fetchConsumerAgentSettings, upsertConsumerAgentSetting } from "@/app/agents/data/consumer-agent-settings-client"
+import type { CatalogAgent, ConsumerAgentSetting } from "@/app/agents/data/contracts"
 import { fetchOpenClawAgents } from "@/app/agents/data/openclaw-agents-client"
 import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
-import { ACTIVE_AGENTS_STORAGE_KEY, defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
+import { defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
 
 function badgeClass(value: CatalogAgent["status"]) {
   if (value === "published") {
@@ -22,35 +23,27 @@ function badgeClass(value: CatalogAgent["status"]) {
   return "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300"
 }
 
+function mergeSetting(items: ConsumerAgentSetting[], setting: ConsumerAgentSetting): ConsumerAgentSetting[] {
+  const index = items.findIndex((item) => item.agentId === setting.agentId)
+
+  if (index === -1) {
+    return [setting, ...items]
+  }
+
+  const next = [...items]
+  next[index] = setting
+  return next
+}
+
 export default function ConsumerDiscoverAgentsPage() {
   const sidebarUser = useSidebarUser(defaultAgentsSidebarUser)
   const [catalogItems, setCatalogItems] = React.useState<CatalogAgent[]>([])
-  const [activeIds, setActiveIds] = React.useState<Set<string>>(new Set())
+  const [settingsItems, setSettingsItems] = React.useState<ConsumerAgentSetting[]>([])
   const [isCatalogLoading, setIsCatalogLoading] = React.useState(true)
+  const [isSettingsLoading, setIsSettingsLoading] = React.useState(true)
   const [catalogError, setCatalogError] = React.useState<string | null>(null)
-  const [hasLoadedActiveIds, setHasLoadedActiveIds] = React.useState(false)
-
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(ACTIVE_AGENTS_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as string[]
-        if (Array.isArray(parsed)) {
-          setActiveIds(new Set(parsed))
-        }
-      }
-    } catch {
-      // ignore malformed localStorage data and keep defaults
-    } finally {
-      setHasLoadedActiveIds(true)
-    }
-  }, [])
-
-  React.useEffect(() => {
-    if (!hasLoadedActiveIds) return
-
-    window.localStorage.setItem(ACTIVE_AGENTS_STORAGE_KEY, JSON.stringify(Array.from(activeIds)))
-  }, [activeIds, hasLoadedActiveIds])
+  const [settingsError, setSettingsError] = React.useState<string | null>(null)
+  const [updatingAgentId, setUpdatingAgentId] = React.useState<string | null>(null)
 
   const loadCatalog = React.useCallback(async () => {
     setIsCatalogLoading(true)
@@ -67,28 +60,54 @@ export default function ConsumerDiscoverAgentsPage() {
     }
   }, [])
 
-  React.useEffect(() => {
-    void loadCatalog()
-  }, [loadCatalog])
+  const loadSettings = React.useCallback(async () => {
+    setIsSettingsLoading(true)
+    setSettingsError(null)
+
+    try {
+      const payload = await fetchConsumerAgentSettings()
+      setSettingsItems(payload.settings)
+    } catch (error) {
+      setSettingsItems([])
+      setSettingsError(error instanceof Error ? error.message : "Failed to load consumer agent settings")
+    } finally {
+      setIsSettingsLoading(false)
+    }
+  }, [])
+
+  const loadPageData = React.useCallback(async () => {
+    await Promise.all([loadCatalog(), loadSettings()])
+  }, [loadCatalog, loadSettings])
 
   React.useEffect(() => {
-    if (!hasLoadedActiveIds) return
+    void loadPageData()
+  }, [loadPageData])
 
-    const validIds = new Set(catalogItems.map((agent) => agent.id))
+  const activeIds = React.useMemo(
+    () => new Set(settingsItems.filter((item) => item.isActive).map((item) => item.agentId)),
+    [settingsItems],
+  )
 
-    setActiveIds((prev) => {
-      const filtered = Array.from(prev).filter((id) => validIds.has(id))
-      return filtered.length === prev.size ? prev : new Set(filtered)
-    })
-  }, [catalogItems, hasLoadedActiveIds])
+  const isLoading = isCatalogLoading || isSettingsLoading
 
-  const toggleAgent = (id: string) => {
-    setActiveIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const toggleAgent = async (id: string) => {
+    const nextActive = !activeIds.has(id)
+
+    setUpdatingAgentId(id)
+    setSettingsError(null)
+
+    try {
+      const payload = await upsertConsumerAgentSetting({
+        agentId: id,
+        isActive: nextActive,
+      })
+
+      setSettingsItems((prev) => mergeSetting(prev, payload.setting))
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : "Failed to update consumer agent settings")
+    } finally {
+      setUpdatingAgentId(null)
+    }
   }
 
   return (
@@ -110,12 +129,21 @@ export default function ConsumerDiscoverAgentsPage() {
           </div>
         ) : null}
 
+        {settingsError ? (
+          <div className="border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            {settingsError}
+            <Button size="sm" variant="outline" className="ml-3" onClick={loadSettings}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
+
         <section className="border bg-card">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <h2 className="text-base font-semibold">OpenClaw Catalog</h2>
-            <Button size="sm" variant="outline" className="gap-1" onClick={loadCatalog} disabled={isCatalogLoading}>
+            <Button size="sm" variant="outline" className="gap-1" onClick={() => void loadPageData()} disabled={isLoading}>
               <Settings2 className="size-3.5" />
-              {isCatalogLoading ? "Loading..." : "Refresh"}
+              {isLoading ? "Loading..." : "Refresh"}
             </Button>
           </div>
           <div className="overflow-x-auto">
@@ -132,6 +160,7 @@ export default function ConsumerDiscoverAgentsPage() {
               <tbody>
                 {catalogItems.map((agent) => {
                   const isActive = activeIds.has(agent.id)
+                  const isUpdating = updatingAgentId === agent.id
 
                   return (
                     <tr key={agent.id} className="border-b last:border-b-0">
@@ -155,8 +184,13 @@ export default function ConsumerDiscoverAgentsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
-                          <Button size="sm" variant={isActive ? "secondary" : "default"} onClick={() => toggleAgent(agent.id)}>
-                            {isActive ? "Deactivate" : "Activate"}
+                          <Button
+                            size="sm"
+                            variant={isActive ? "secondary" : "default"}
+                            disabled={isUpdating}
+                            onClick={() => void toggleAgent(agent.id)}
+                          >
+                            {isUpdating ? "Updating..." : isActive ? "Deactivate" : "Activate"}
                           </Button>
                           {isActive ? (
                             <Button asChild size="sm" variant="outline">
@@ -173,7 +207,7 @@ export default function ConsumerDiscoverAgentsPage() {
                   )
                 })}
 
-                {catalogItems.length === 0 && !isCatalogLoading ? (
+                {catalogItems.length === 0 && !isLoading ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
                       No OpenClaw agents found yet.
@@ -181,7 +215,7 @@ export default function ConsumerDiscoverAgentsPage() {
                   </tr>
                 ) : null}
 
-                {isCatalogLoading ? (
+                {isLoading ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
                       Loading OpenClaw catalog...

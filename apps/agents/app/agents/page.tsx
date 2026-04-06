@@ -15,10 +15,11 @@ import {
 } from "@workspace/ui/components/alert-dialog"
 import { Button } from "@workspace/ui/components/button"
 import { AppShell } from "@workspace/ui/components/app-shell"
-import type { CatalogAgent } from "@/app/agents/data/contracts"
+import { fetchConsumerAgentSettings, upsertConsumerAgentSetting } from "@/app/agents/data/consumer-agent-settings-client"
+import type { CatalogAgent, ConsumerAgentSetting } from "@/app/agents/data/contracts"
 import { fetchOpenClawAgents } from "@/app/agents/data/openclaw-agents-client"
 import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
-import { ACTIVE_AGENTS_STORAGE_KEY, defaultAgentsSidebarUser, getConsumerSidebar } from "./data"
+import { defaultAgentsSidebarUser, getConsumerSidebar } from "./data"
 
 function getStatusBadgeClass(status: CatalogAgent["status"]) {
   if (status === "published") {
@@ -32,36 +33,28 @@ function getStatusBadgeClass(status: CatalogAgent["status"]) {
   return "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300"
 }
 
+function mergeSetting(items: ConsumerAgentSetting[], setting: ConsumerAgentSetting): ConsumerAgentSetting[] {
+  const index = items.findIndex((item) => item.agentId === setting.agentId)
+
+  if (index === -1) {
+    return [setting, ...items]
+  }
+
+  const next = [...items]
+  next[index] = setting
+  return next
+}
+
 export default function ConsumerAgentsPage() {
   const sidebarUser = useSidebarUser(defaultAgentsSidebarUser)
-  const [activeIds, setActiveIds] = React.useState<Set<string>>(new Set())
   const [catalogItems, setCatalogItems] = React.useState<CatalogAgent[]>([])
+  const [settingsItems, setSettingsItems] = React.useState<ConsumerAgentSetting[]>([])
   const [isCatalogLoading, setIsCatalogLoading] = React.useState(true)
+  const [isSettingsLoading, setIsSettingsLoading] = React.useState(true)
   const [catalogError, setCatalogError] = React.useState<string | null>(null)
-  const [hasLoadedActiveIds, setHasLoadedActiveIds] = React.useState(false)
+  const [settingsError, setSettingsError] = React.useState<string | null>(null)
   const [pendingDeactivateId, setPendingDeactivateId] = React.useState<string | null>(null)
-
-  React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(ACTIVE_AGENTS_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as string[]
-        if (Array.isArray(parsed)) {
-          setActiveIds(new Set(parsed))
-        }
-      }
-    } catch {
-      // ignore malformed localStorage data and keep defaults
-    } finally {
-      setHasLoadedActiveIds(true)
-    }
-  }, [])
-
-  React.useEffect(() => {
-    if (!hasLoadedActiveIds) return
-
-    window.localStorage.setItem(ACTIVE_AGENTS_STORAGE_KEY, JSON.stringify(Array.from(activeIds)))
-  }, [activeIds, hasLoadedActiveIds])
+  const [updatingAgentId, setUpdatingAgentId] = React.useState<string | null>(null)
 
   const loadCatalog = React.useCallback(async () => {
     setIsCatalogLoading(true)
@@ -78,30 +71,54 @@ export default function ConsumerAgentsPage() {
     }
   }, [])
 
-  React.useEffect(() => {
-    void loadCatalog()
-  }, [loadCatalog])
+  const loadSettings = React.useCallback(async () => {
+    setIsSettingsLoading(true)
+    setSettingsError(null)
+
+    try {
+      const payload = await fetchConsumerAgentSettings()
+      setSettingsItems(payload.settings)
+    } catch (error) {
+      setSettingsItems([])
+      setSettingsError(error instanceof Error ? error.message : "Failed to load consumer agent settings")
+    } finally {
+      setIsSettingsLoading(false)
+    }
+  }, [])
+
+  const loadPageData = React.useCallback(async () => {
+    await Promise.all([loadCatalog(), loadSettings()])
+  }, [loadCatalog, loadSettings])
 
   React.useEffect(() => {
-    if (!hasLoadedActiveIds) return
+    void loadPageData()
+  }, [loadPageData])
 
-    const validIds = new Set(catalogItems.map((agent) => agent.id))
+  const activeIds = React.useMemo(
+    () => new Set(settingsItems.filter((item) => item.isActive).map((item) => item.agentId)),
+    [settingsItems],
+  )
 
-    setActiveIds((prev) => {
-      const filtered = Array.from(prev).filter((id) => validIds.has(id))
-      return filtered.length === prev.size ? prev : new Set(filtered)
-    })
-  }, [catalogItems, hasLoadedActiveIds])
-
+  const isLoading = isCatalogLoading || isSettingsLoading
   const activeAgents = catalogItems.filter((agent) => activeIds.has(agent.id))
 
-  const deactivateAgent = (id: string) => {
-    setActiveIds((prev) => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-    setPendingDeactivateId(null)
+  const deactivateAgent = async (id: string) => {
+    setUpdatingAgentId(id)
+    setSettingsError(null)
+
+    try {
+      const payload = await upsertConsumerAgentSetting({
+        agentId: id,
+        isActive: false,
+      })
+
+      setSettingsItems((prev) => mergeSetting(prev, payload.setting))
+      setPendingDeactivateId(null)
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : "Failed to deactivate agent")
+    } finally {
+      setUpdatingAgentId(null)
+    }
   }
 
   return (
@@ -123,6 +140,15 @@ export default function ConsumerAgentsPage() {
           </div>
         ) : null}
 
+        {settingsError ? (
+          <div className="border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            {settingsError}
+            <Button size="sm" variant="outline" className="ml-3" onClick={loadSettings}>
+              Retry
+            </Button>
+          </div>
+        ) : null}
+
         <section className="grid gap-3 sm:grid-cols-3">
           <article className="border bg-card p-4">
             <p className="text-xs text-muted-foreground">Active Agents</p>
@@ -135,9 +161,9 @@ export default function ConsumerAgentsPage() {
           <article className="border bg-card p-4">
             <p className="text-xs text-muted-foreground">Catalog Sync</p>
             <div className="mt-2">
-              <Button size="sm" variant="outline" onClick={loadCatalog} disabled={isCatalogLoading}>
+              <Button size="sm" variant="outline" onClick={() => void loadPageData()} disabled={isLoading}>
                 <Settings2 className="mr-1 size-3.5" />
-                {isCatalogLoading ? "Loading..." : "Refresh"}
+                {isLoading ? "Loading..." : "Refresh"}
               </Button>
             </div>
           </article>
@@ -149,11 +175,11 @@ export default function ConsumerAgentsPage() {
             <h2 className="text-base font-semibold">Active Agents</h2>
           </div>
 
-          {isCatalogLoading ? (
+          {isLoading ? (
             <div className="border p-4 text-sm text-muted-foreground">Loading agent catalog...</div>
           ) : null}
 
-          {!isCatalogLoading && activeAgents.length === 0 ? (
+          {!isLoading && activeAgents.length === 0 ? (
             <div className="flex flex-col gap-3 border p-4">
               <p className="text-sm text-muted-foreground">
                 {catalogItems.length === 0
@@ -170,29 +196,38 @@ export default function ConsumerAgentsPage() {
             </div>
           ) : null}
 
-          {!isCatalogLoading && activeAgents.length > 0 ? (
+          {!isLoading && activeAgents.length > 0 ? (
             <ul className="grid gap-2">
-              {activeAgents.map((agent) => (
-                <li key={agent.id} className="flex items-center justify-between border px-3 py-2">
-                  <div>
-                    <p className="font-medium">{agent.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {agent.workspace} · {agent.aiModel}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex border px-2 py-0.5 text-xs capitalize ${getStatusBadgeClass(agent.status)}`}>
-                      {agent.status}
-                    </span>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/agents/${agent.id}`}>Configure</Link>
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => setPendingDeactivateId(agent.id)}>
-                      Deactivate
-                    </Button>
-                  </div>
-                </li>
-              ))}
+              {activeAgents.map((agent) => {
+                const isUpdating = updatingAgentId === agent.id
+
+                return (
+                  <li key={agent.id} className="flex items-center justify-between border px-3 py-2">
+                    <div>
+                      <p className="font-medium">{agent.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {agent.workspace} · {agent.aiModel}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex border px-2 py-0.5 text-xs capitalize ${getStatusBadgeClass(agent.status)}`}>
+                        {agent.status}
+                      </span>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/agents/${agent.id}`}>Configure</Link>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={isUpdating}
+                        onClick={() => setPendingDeactivateId(agent.id)}
+                      >
+                        {isUpdating ? "Updating..." : "Deactivate"}
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           ) : null}
         </section>
@@ -212,13 +247,16 @@ export default function ConsumerAgentsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={updatingAgentId !== null}>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              disabled={updatingAgentId !== null}
               onClick={() => {
-                if (pendingDeactivateId) deactivateAgent(pendingDeactivateId)
+                if (pendingDeactivateId) {
+                  void deactivateAgent(pendingDeactivateId)
+                }
               }}
             >
-              Deactivate
+              {updatingAgentId !== null ? "Updating..." : "Deactivate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

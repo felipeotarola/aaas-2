@@ -7,8 +7,9 @@ import { useParams } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { AppShell } from "@workspace/ui/components/app-shell"
+import { fetchConsumerAgentSettings } from "@/app/agents/data/consumer-agent-settings-client"
 import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
-import { ACTIVE_AGENTS_STORAGE_KEY, defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
+import { defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
 
 type Channel = {
   key: "telegram" | "whatsapp" | "email" | "webchat"
@@ -49,6 +50,7 @@ export default function ConsumerAgentDetailPage() {
   const params = useParams<{ slug: string }>()
   const slug = params?.slug ?? "unknown-agent"
   const [isAllowed, setIsAllowed] = React.useState<boolean | null>(null)
+  const [accessError, setAccessError] = React.useState<string | null>(null)
   const [connected, setConnected] = React.useState<Record<string, boolean>>({
     telegram: false,
     whatsapp: false,
@@ -63,12 +65,31 @@ export default function ConsumerAgentDetailPage() {
   )
 
   React.useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(ACTIVE_AGENTS_STORAGE_KEY)
-      const parsed = raw ? (JSON.parse(raw) as string[]) : []
-      setIsAllowed(Array.isArray(parsed) && parsed.includes(slug))
-    } catch {
-      setIsAllowed(false)
+    let mounted = true
+
+    const loadAccess = async () => {
+      setIsAllowed(null)
+      setAccessError(null)
+
+      try {
+        const payload = await fetchConsumerAgentSettings()
+        const isActive = payload.settings.some((setting) => setting.agentId === slug && setting.isActive)
+
+        if (mounted) {
+          setIsAllowed(isActive)
+        }
+      } catch (error) {
+        if (mounted) {
+          setIsAllowed(false)
+          setAccessError(error instanceof Error ? error.message : "Failed to verify agent access")
+        }
+      }
+    }
+
+    void loadAccess()
+
+    return () => {
+      mounted = false
     }
   }, [slug])
 
@@ -82,6 +103,7 @@ export default function ConsumerAgentDetailPage() {
               This agent is not activated for your account yet. Activate it first from the Agents page
               before opening channel configuration.
             </p>
+            {accessError ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{accessError}</p> : null}
             <div className="mt-4">
               <Button asChild>
                 <Link href="/agents">Go to Agents</Link>
@@ -98,74 +120,74 @@ export default function ConsumerAgentDetailPage() {
 
         {isAllowed ? (
           <>
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <Link href="/agents" className="text-xs text-muted-foreground underline underline-offset-4">
-              Back to agents
-            </Link>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">{displayName}</h1>
-            <p className="text-sm text-muted-foreground">
-              Configure channels and client integrations for this agent.
-            </p>
-          </div>
-          <span className="inline-flex items-center gap-1 border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-300">
-            <CheckCircle2 className="size-3.5" />
-            Active
-          </span>
-        </header>
+            <header className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <Link href="/agents" className="text-xs text-muted-foreground underline underline-offset-4">
+                  Back to agents
+                </Link>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight">{displayName}</h1>
+                <p className="text-sm text-muted-foreground">
+                  Configure channels and client integrations for this agent.
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 className="size-3.5" />
+                Active
+              </span>
+            </header>
 
-        <section className="border bg-card p-4">
-          <h2 className="mb-3 text-base font-semibold">Agent Basics</h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-muted-foreground">Agent display name</label>
-              <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-muted-foreground">Agent slug</label>
-              <Input value={slug} readOnly />
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-2">
-          {channels.map((channel) => {
-            const Icon = channel.icon
-            const isConnected = connected[channel.key]
-
-            return (
-              <article key={channel.key} className="flex flex-col gap-3 border bg-card p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Icon className="size-4 text-primary" />
-                    <h3 className="font-semibold">{channel.label}</h3>
-                  </div>
-                  <span
-                    className={`inline-flex border px-2 py-0.5 text-xs ${
-                      isConnected
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                        : "border-muted bg-muted/40 text-muted-foreground"
-                    }`}
-                  >
-                    {isConnected ? "Connected" : "Not connected"}
-                  </span>
+            <section className="border bg-card p-4">
+              <h2 className="mb-3 text-base font-semibold">Agent Basics</h2>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-muted-foreground">Agent display name</label>
+                  <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
                 </div>
-                <p className="text-sm text-muted-foreground">{channel.description}</p>
-                <div className="mt-auto flex items-center gap-2">
-                  <Button
-                    variant={isConnected ? "secondary" : "default"}
-                    onClick={() =>
-                      setConnected((prev) => ({ ...prev, [channel.key]: !prev[channel.key] }))
-                    }
-                  >
-                    {isConnected ? "Disconnect" : "Connect"}
-                  </Button>
-                  <Button variant="outline">Open settings</Button>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs text-muted-foreground">Agent slug</label>
+                  <Input value={slug} readOnly />
                 </div>
-              </article>
-            )
-          })}
-        </section>
+              </div>
+            </section>
+
+            <section className="grid gap-4 lg:grid-cols-2">
+              {channels.map((channel) => {
+                const Icon = channel.icon
+                const isConnected = connected[channel.key]
+
+                return (
+                  <article key={channel.key} className="flex flex-col gap-3 border bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Icon className="size-4 text-primary" />
+                        <h3 className="font-semibold">{channel.label}</h3>
+                      </div>
+                      <span
+                        className={`inline-flex border px-2 py-0.5 text-xs ${
+                          isConnected
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            : "border-muted bg-muted/40 text-muted-foreground"
+                        }`}
+                      >
+                        {isConnected ? "Connected" : "Not connected"}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{channel.description}</p>
+                    <div className="mt-auto flex items-center gap-2">
+                      <Button
+                        variant={isConnected ? "secondary" : "default"}
+                        onClick={() =>
+                          setConnected((prev) => ({ ...prev, [channel.key]: !prev[channel.key] }))
+                        }
+                      >
+                        {isConnected ? "Disconnect" : "Connect"}
+                      </Button>
+                      <Button variant="outline">Open settings</Button>
+                    </div>
+                  </article>
+                )
+              })}
+            </section>
           </>
         ) : null}
       </main>
