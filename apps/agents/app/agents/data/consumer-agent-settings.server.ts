@@ -160,7 +160,8 @@ async function resolveWorkspaceRootFromConfig(openClawHome: string): Promise<str
     const workspace = parsed.agents?.defaults?.workspace
 
     if (typeof workspace === "string" && workspace.trim().length > 0) {
-      return workspace.trim()
+      const normalized = workspace.trim()
+      return path.isAbsolute(normalized) ? normalized : path.join(openClawHome, normalized)
     }
   } catch {
     // Ignore missing/unreadable config and fall back
@@ -174,14 +175,21 @@ async function resolveWorkspaceRoot(): Promise<string> {
 
   for (const candidate of candidates) {
     const openClawHome = toOpenClawHome(candidate)
+    const configPath = path.join(openClawHome, "openclaw.json")
     const fromConfig = await resolveWorkspaceRootFromConfig(openClawHome)
     if (fromConfig) {
-      return path.isAbsolute(fromConfig) ? fromConfig : path.join(openClawHome, fromConfig)
+      return fromConfig
+    }
+
+    try {
+      await readFile(configPath, "utf8")
+      return path.join(openClawHome, "workspace")
+    } catch {
+      // Ignore missing/unreadable config and keep searching
     }
   }
 
-  const normalizedHome = normalizePathInput(homedir()) || "/home/node"
-  return path.join(toOpenClawHome(normalizedHome), "workspace")
+  return "/home/node/.openclaw/workspace"
 }
 
 export async function resolveWorkspaceForRef(workspaceRef: string): Promise<WorkspaceResolution> {
