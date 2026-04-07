@@ -170,14 +170,18 @@ async function resolveWorkspaceRootFromConfig(openClawHome: string): Promise<str
 }
 
 async function resolveWorkspaceRoot(): Promise<string> {
-  for (const candidate of getOpenClawHomeCandidates()) {
+  const candidates = getOpenClawHomeCandidates()
+
+  for (const candidate of candidates) {
     const openClawHome = toOpenClawHome(candidate)
     const fromConfig = await resolveWorkspaceRootFromConfig(openClawHome)
-    if (fromConfig) return fromConfig
+    if (fromConfig) {
+      return path.isAbsolute(fromConfig) ? fromConfig : path.join(openClawHome, fromConfig)
+    }
   }
 
-  const defaultHome = toOpenClawHome(getOpenClawHomeCandidates()[0] ?? homedir())
-  return path.join(defaultHome, "workspace")
+  const normalizedHome = normalizePathInput(homedir()) || "/home/node"
+  return path.join(toOpenClawHome(normalizedHome), "workspace")
 }
 
 export async function resolveWorkspaceForRef(workspaceRef: string): Promise<WorkspaceResolution> {
@@ -294,9 +298,10 @@ export async function upsertConsumerAgentSetting(args: {
   if (workspaceRef && args.input.isActive) {
     try {
       await ensureWorkspaceDirectory(workspaceRef)
-    } catch {
+    } catch (error) {
+      const reason = error instanceof Error && error.message ? ` ${error.message}` : ""
       throw new ConsumerAgentSettingsError(
-        "Failed to create consumer workspace directory for this agent.",
+        `Failed to create consumer workspace directory for this agent.${reason}`,
         500,
       )
     }
