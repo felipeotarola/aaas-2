@@ -8,6 +8,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { AppShell } from "@workspace/ui/components/app-shell"
 import { fetchConsumerAgentSettings } from "@/app/agents/data/consumer-agent-settings-client"
+import type { ConsumerAgentSetting } from "@/app/agents/data/contracts"
 import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
 import { defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
 
@@ -50,6 +51,7 @@ export default function ConsumerAgentDetailPage() {
   const params = useParams<{ slug: string }>()
   const slug = params?.slug ?? "unknown-agent"
   const [isAllowed, setIsAllowed] = React.useState<boolean | null>(null)
+  const [activeSetting, setActiveSetting] = React.useState<ConsumerAgentSetting | null>(null)
   const [accessError, setAccessError] = React.useState<string | null>(null)
   const [connected, setConnected] = React.useState<Record<string, boolean>>({
     telegram: false,
@@ -73,10 +75,11 @@ export default function ConsumerAgentDetailPage() {
 
       try {
         const payload = await fetchConsumerAgentSettings()
-        const isActive = payload.settings.some((setting) => setting.agentId === slug && setting.isActive)
+        const setting = payload.settings.find((item) => item.agentId === slug && item.isActive) ?? null
 
         if (mounted) {
-          setIsAllowed(isActive)
+          setActiveSetting(setting)
+          setIsAllowed(Boolean(setting))
         }
       } catch (error) {
         if (mounted) {
@@ -129,6 +132,9 @@ export default function ConsumerAgentDetailPage() {
                 <p className="text-sm text-muted-foreground">
                   Configure channels and client integrations for this agent.
                 </p>
+                {activeSetting?.workspaceRef ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Workspace: {activeSetting.workspaceRef}</p>
+                ) : null}
               </div>
               <span className="inline-flex items-center gap-1 border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-300">
                 <CheckCircle2 className="size-3.5" />

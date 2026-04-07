@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Settings2, Sparkles } from "lucide-react"
+import { FolderKanban, Settings2, Sparkles } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -100,6 +100,10 @@ export default function ConsumerAgentsPage() {
   )
 
   const isLoading = isCatalogLoading || isSettingsLoading
+  const activeSettingsByAgentId = React.useMemo(
+    () => new Map(settingsItems.filter((item) => item.isActive).map((item) => [item.agentId, item])),
+    [settingsItems],
+  )
   const activeAgents = catalogItems.filter((agent) => activeIds.has(agent.id))
 
   const deactivateAgent = async (id: string) => {
@@ -127,7 +131,7 @@ export default function ConsumerAgentsPage() {
         <header className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Your Agents</h1>
           <p className="text-sm text-muted-foreground">
-            Här ser du agenter som är aktiverade för ditt konto. Lägg till fler via Discover.
+            Agents activated for your account. Each active agent gets its own user-specific workspace.
           </p>
         </header>
 
@@ -200,14 +204,21 @@ export default function ConsumerAgentsPage() {
             <ul className="grid gap-2">
               {activeAgents.map((agent) => {
                 const isUpdating = updatingAgentId === agent.id
+                const setting = activeSettingsByAgentId.get(agent.id)
 
                 return (
                   <li key={agent.id} className="flex items-center justify-between border px-3 py-2">
                     <div>
                       <p className="font-medium">{agent.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {agent.workspace} · {agent.aiModel}
+                        {agent.aiModel}
                       </p>
+                      {setting?.workspaceRef ? (
+                        <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <FolderKanban className="size-3.5" />
+                          Workspace: {setting.workspaceRef}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex border px-2 py-0.5 text-xs capitalize ${getStatusBadgeClass(agent.status)}`}>

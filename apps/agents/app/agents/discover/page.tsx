@@ -89,6 +89,10 @@ export default function ConsumerDiscoverAgentsPage() {
   )
 
   const isLoading = isCatalogLoading || isSettingsLoading
+  const visibleCatalogItems = React.useMemo(
+    () => catalogItems.filter((agent) => !activeIds.has(agent.id)),
+    [activeIds, catalogItems],
+  )
 
   const toggleAgent = async (id: string) => {
     const nextActive = !activeIds.has(id)
@@ -116,7 +120,7 @@ export default function ConsumerDiscoverAgentsPage() {
         <header className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Discover Agents</h1>
           <p className="text-sm text-muted-foreground">
-            Katalog över agenter du kan aktivera. När en agent är aktiv kan du konfigurera den.
+            Browse agents you can activate. When activated, the agent moves to Active Agents and gets a workspace unique to your account.
           </p>
         </header>
 
@@ -140,7 +144,7 @@ export default function ConsumerDiscoverAgentsPage() {
 
         <section className="border bg-card">
           <div className="flex items-center justify-between border-b px-4 py-3">
-            <h2 className="text-base font-semibold">OpenClaw Catalog</h2>
+            <h2 className="text-base font-semibold">Discover Agents</h2>
             <Button size="sm" variant="outline" className="gap-1" onClick={() => void loadPageData()} disabled={isLoading}>
               <Settings2 className="size-3.5" />
               {isLoading ? "Loading..." : "Refresh"}
@@ -158,7 +162,7 @@ export default function ConsumerDiscoverAgentsPage() {
                 </tr>
               </thead>
               <tbody>
-                {catalogItems.map((agent) => {
+                {visibleCatalogItems.map((agent) => {
                   const isActive = activeIds.has(agent.id)
                   const isUpdating = updatingAgentId === agent.id
 
@@ -207,10 +211,12 @@ export default function ConsumerDiscoverAgentsPage() {
                   )
                 })}
 
-                {catalogItems.length === 0 && !isLoading ? (
+                {visibleCatalogItems.length === 0 && !isLoading ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
-                      No OpenClaw agents found yet.
+                      {catalogItems.length === 0
+                        ? "No OpenClaw agents found yet."
+                        : "All available agents are already active for your account."}
                     </td>
                   </tr>
                 ) : null}
