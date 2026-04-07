@@ -1,6 +1,7 @@
 import "server-only"
 
-import { mkdir, readFile } from "node:fs/promises"
+import { constants as fsConstants } from "node:fs"
+import { access, mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 
@@ -170,7 +171,8 @@ async function resolveWorkspaceRootFromConfig(openClawHome: string): Promise<str
   return null
 }
 
-async function resolveWorkspaceRoot(): Promise<string> {
+async function resolveWorkspaceRootCandidates(): Promise<string[]> {
+  const roots: string[] = []
   const candidates = getOpenClawHomeCandidates()
 
   for (const candidate of candidates) {
@@ -178,18 +180,63 @@ async function resolveWorkspaceRoot(): Promise<string> {
     const configPath = path.join(openClawHome, "openclaw.json")
     const fromConfig = await resolveWorkspaceRootFromConfig(openClawHome)
     if (fromConfig) {
-      return fromConfig
+      roots.push(fromConfig)
     }
 
     try {
       await readFile(configPath, "utf8")
-      return path.join(openClawHome, "workspace")
+      roots.push(path.join(openClawHome, "workspace"))
     } catch {
       // Ignore missing/unreadable config and keep searching
     }
   }
 
-  return "/home/node/.openclaw/workspace"
+  const home = normalizePathInput(homedir())
+  if (home) {
+    roots.push(path.join(toOpenClawHome(home), "workspace"))
+  }
+
+  roots.push("/home/node/.openclaw/workspace")
+  roots.push("/root/.openclaw/workspace")
+  roots.push("/tmp/openclaw/workspace")
+
+  return Array.from(new Set(roots.map((root) => path.resolve(root))))
+}
+
+async function isUsableWorkspaceRoot(workspaceRoot: string): Promise<boolean> {
+  if (!workspaceRoot || !path.isAbsolute(workspaceRoot)) return false
+
+  let probePath = workspaceRoot
+
+  while (true) {
+    try {
+      await access(probePath, fsConstants.W_OK | fsConstants.X_OK)
+      return true
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code
+
+      if (code === "ENOENT") {
+        const parent = path.dirname(probePath)
+        if (parent === probePath) return false
+        probePath = parent
+        continue
+      }
+
+      return false
+    }
+  }
+}
+
+async function resolveWorkspaceRoot(): Promise<string> {
+  const roots = await resolveWorkspaceRootCandidates()
+
+  for (const root of roots) {
+    if (await isUsableWorkspaceRoot(root)) {
+      return root
+    }
+  }
+
+  return roots[0] ?? "/tmp/openclaw/workspace"
 }
 
 export async function resolveWorkspaceForRef(workspaceRef: string): Promise<WorkspaceResolution> {
