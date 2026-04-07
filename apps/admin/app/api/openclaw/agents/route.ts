@@ -14,6 +14,10 @@ function toErrorResponse(error: unknown) {
     return NextResponse.json({ error: error.message }, { status: error.statusCode })
   }
 
+  if (error instanceof Error && error.message.trim()) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
   return NextResponse.json({ error: "Unexpected server error while handling OpenClaw agents." }, { status: 500 })
 }
 

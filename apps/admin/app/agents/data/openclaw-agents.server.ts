@@ -407,12 +407,14 @@ export async function listOpenClawAgents(): Promise<ListOpenClawAgentsResponse> 
 }
 
 export async function createOpenClawAgent(input: CreateOpenClawAgentRequest): Promise<CatalogAgent> {
-  const name = input.name.trim()
+  const rawName = typeof (input as { name?: unknown })?.name === "string" ? (input as { name: string }).name : ""
+  const name = rawName.trim()
   if (name.length < 3) {
     throw new OpenClawAgentsError("Agent name must be at least 3 characters.", 400)
   }
 
-  const requestedId = input.id?.trim() || name
+  const rawId = typeof (input as { id?: unknown })?.id === "string" ? (input as { id: string }).id : ""
+  const requestedId = rawId.trim() || name
   const agentId = normalizeAgentId(requestedId)
 
   if (!agentId) {
@@ -427,7 +429,8 @@ export async function createOpenClawAgent(input: CreateOpenClawAgentRequest): Pr
 
   const defaults = config.agents?.defaults
   const defaultModel = parseModel(defaults?.model)
-  const selectedModel = input.model?.trim() || defaultModel || undefined
+  const rawModel = typeof (input as { model?: unknown })?.model === "string" ? (input as { model: string }).model : ""
+  const selectedModel = rawModel.trim() || defaultModel || undefined
 
   const directories = await readAgentDirectoryIds(paths.agentsRoot)
   const existingEntries = getConfigEntryMap(config.agents?.list)
@@ -455,11 +458,31 @@ export async function createOpenClawAgent(input: CreateOpenClawAgentRequest): Pr
 
   config.agents.list.push(nextEntry)
 
-  await writeOpenClawConfig(paths.configPath, config)
-  await createAgentScaffold({
-    agentsRoot: paths.agentsRoot,
-    agentId,
-  })
+  try {
+    await writeOpenClawConfig(paths.configPath, config)
+    await createAgentScaffold({
+      agentsRoot: paths.agentsRoot,
+      agentId,
+    })
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code
+    if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+      throw new OpenClawAgentsError(
+        "Unable to write OpenClaw agent files. Config: " +
+          paths.configPath +
+          ". Agents root: " +
+          paths.agentsRoot +
+          ". Set OPENCLAW_HOME/OPENCLAW_CONFIG_PATH to a writable location or run this API where OpenClaw files are writable.",
+        500,
+      )
+    }
+
+    if (error instanceof Error && error.message.trim()) {
+      throw new OpenClawAgentsError("Failed to create OpenClaw agent: " + error.message, 500)
+    }
+
+    throw new OpenClawAgentsError("Failed to create OpenClaw agent due to an unexpected filesystem error.", 500)
+  }
 
   return createCatalogAgent({
     id: agentId,
