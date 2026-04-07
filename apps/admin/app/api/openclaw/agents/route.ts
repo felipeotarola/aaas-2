@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import type { CreateOpenClawAgentRequest } from "@/app/agents/data/contracts"
+import { listActiveConsumerAgentSubscriptions } from "@/app/agents/data/consumer-agent-subscriptions.server"
 import {
   OpenClawAgentsError,
   createOpenClawAgent,
@@ -28,7 +29,25 @@ export async function GET() {
 
   try {
     const payload = await listOpenClawAgents()
-    return NextResponse.json(payload)
+    let subscriptionsError: string | null = null
+    let activeSubscriptions = payload.activeSubscriptions ?? []
+
+    try {
+      activeSubscriptions = await listActiveConsumerAgentSubscriptions({
+        catalogAgents: payload.agents,
+      })
+    } catch (error) {
+      subscriptionsError =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Failed to load active user subscriptions."
+    }
+
+    return NextResponse.json({
+      ...payload,
+      activeSubscriptions,
+      subscriptionsError,
+    })
   } catch (error) {
     return toErrorResponse(error)
   }

@@ -14,7 +14,7 @@ import {
 import { AppShell, type AppShellData } from "@workspace/ui/components/app-shell"
 import { useSidebarUser, type SidebarUser } from "@/lib/auth/use-sidebar-user"
 
-import type { CatalogAgent } from "@/app/agents/data/contracts"
+import type { ActiveConsumerAgentSubscription, CatalogAgent } from "@/app/agents/data/contracts"
 import {
   createOpenClawAgent,
   deleteOpenClawAgent,
@@ -59,12 +59,27 @@ function badgeClass(value: string) {
   return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
 }
 
+function formatTimestamp(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+
+  return new Intl.DateTimeFormat("sv-SE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
+}
+
 const PRIMARY_FALLBACK_MODEL = "openai-codex/gpt-5.4"
 const FALLBACK_MODELS = [PRIMARY_FALLBACK_MODEL]
 
 export default function AdminAgentsPage() {
   const sidebarUser = useSidebarUser(defaultAdminSidebarUser)
   const [catalogItems, setCatalogItems] = React.useState<CatalogAgent[]>([])
+  const [activeSubscriptions, setActiveSubscriptions] = React.useState<ActiveConsumerAgentSubscription[]>([])
+  const [subscriptionsError, setSubscriptionsError] = React.useState<string | null>(null)
   const [availableModels, setAvailableModels] = React.useState<string[]>(FALLBACK_MODELS)
   const [isLoading, setIsLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<string | null>(null)
@@ -85,6 +100,8 @@ export default function AdminAgentsPage() {
     try {
       const payload = await fetchOpenClawAgents()
       setCatalogItems(payload.agents)
+      setActiveSubscriptions(payload.activeSubscriptions ?? [])
+      setSubscriptionsError(payload.subscriptionsError ?? null)
 
       const models = payload.availableModels.length > 0 ? payload.availableModels : FALLBACK_MODELS
       setAvailableModels(models)
@@ -103,6 +120,10 @@ export default function AdminAgentsPage() {
   }, [loadAgents])
 
   const publishedCount = catalogItems.filter((item) => item.status === "published").length
+  const subscribedUserCount = React.useMemo(
+    () => new Set(activeSubscriptions.map((subscription) => subscription.userId)).size,
+    [activeSubscriptions],
+  )
   const canCreate = newAgentName.trim().length > 2 && !isSaving
   const adminSidebar = React.useMemo<AppShellData>(
     () => ({
@@ -245,7 +266,7 @@ export default function AdminAgentsPage() {
           </SheetContent>
         </Sheet>
 
-        <section className="grid gap-3 md:grid-cols-2">
+        <section className="grid gap-3 md:grid-cols-3">
           <article className="border bg-card p-4">
             <p className="text-xs text-muted-foreground">Catalog Size</p>
             <p className="mt-1 text-2xl font-semibold">{catalogItems.length}</p>
@@ -253,6 +274,10 @@ export default function AdminAgentsPage() {
           <article className="border bg-card p-4">
             <p className="text-xs text-muted-foreground">Published Agents</p>
             <p className="mt-1 text-2xl font-semibold">{publishedCount}</p>
+          </article>
+          <article className="border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Users With Active Subscriptions</p>
+            <p className="mt-1 text-2xl font-semibold">{subscribedUserCount}</p>
           </article>
         </section>
 
@@ -323,6 +348,58 @@ export default function AdminAgentsPage() {
                   <tr>
                     <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
                       No OpenClaw agents found yet.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="border bg-card">
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <h2 className="text-base font-semibold">Active User → Agent Subscriptions</h2>
+            <p className="text-xs text-muted-foreground">{activeSubscriptions.length} active subscriptions</p>
+          </div>
+          {subscriptionsError ? (
+            <p className="border-b px-4 py-2 text-sm text-red-600 dark:text-red-400">{subscriptionsError}</p>
+          ) : null}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">User</th>
+                  <th className="px-4 py-3 font-medium">Agent</th>
+                  <th className="px-4 py-3 font-medium">Workspace Ref</th>
+                  <th className="px-4 py-3 font-medium">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeSubscriptions.map((subscription) => (
+                  <tr key={`${subscription.userId}:${subscription.agentId}`} className="border-b last:border-b-0">
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col">
+                        <span className="font-medium">{subscription.userName}</span>
+                        <span className="text-xs text-muted-foreground">{subscription.userEmail}</span>
+                        <span className="font-mono text-xs text-muted-foreground">{subscription.userId}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col">
+                        <span className="font-medium">{subscription.agentName}</span>
+                        <span className="text-xs text-muted-foreground">{subscription.agentId}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                      {subscription.workspaceRef || "-"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatTimestamp(subscription.updatedAt)}</td>
+                  </tr>
+                ))}
+                {!isLoading && activeSubscriptions.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                      No active user subscriptions found.
                     </td>
                   </tr>
                 ) : null}
