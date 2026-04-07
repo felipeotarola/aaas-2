@@ -39,3 +39,20 @@ export type UpsertConsumerAgentSettingRequest = {
 export type UpsertConsumerAgentSettingResponse = {
   setting: ConsumerAgentSetting
 }
+
+export type ChatWithConsumerAgentRequest = {
+  agentId: string
+  message: string
+  sessionId?: string | null
+}
+
+export type ChatWithConsumerAgentResponse = {
+  chat: {
+    agentId: string
+    reply: string
+    sessionId: string | null
+    runId: string | null
+    model: string | null
+    provider: string | null
+  }
+}

@@ -1,4 +1,6 @@
 import type {
+  ChatWithConsumerAgentRequest,
+  ChatWithConsumerAgentResponse,
   ListConsumerAgentSettingsResponse,
   UpsertConsumerAgentSettingRequest,
   UpsertConsumerAgentSettingResponse,
@@ -52,4 +54,18 @@ export async function launchConsumerAgent(agentId: string): Promise<LaunchConsum
   })
 
   return parseResponse<LaunchConsumerAgentResponse>(response)
+}
+
+export async function sendConsumerAgentChatMessage(
+  input: ChatWithConsumerAgentRequest,
+): Promise<ChatWithConsumerAgentResponse> {
+  const response = await fetch("/api/consumer/agents/chat", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  })
+
+  return parseResponse<ChatWithConsumerAgentResponse>(response)
 }

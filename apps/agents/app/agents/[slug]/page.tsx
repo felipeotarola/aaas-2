@@ -7,7 +7,11 @@ import { useParams } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { AppShell } from "@workspace/ui/components/app-shell"
-import { fetchConsumerAgentSettings, launchConsumerAgent } from "@/app/agents/data/consumer-agent-settings-client"
+import {
+  fetchConsumerAgentSettings,
+  launchConsumerAgent,
+  sendConsumerAgentChatMessage,
+} from "@/app/agents/data/consumer-agent-settings-client"
 import type { ConsumerAgentSetting } from "@/app/agents/data/contracts"
 import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
 import { defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
@@ -17,6 +21,12 @@ type Channel = {
   label: string
   description: string
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
+}
+
+type ChatMessage = {
+  id: string
+  role: "user" | "assistant" | "system"
+  text: string
 }
 
 const channels: Channel[] = [
@@ -46,6 +56,10 @@ const channels: Channel[] = [
   },
 ]
 
+function buildChatMessageId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 export default function ConsumerAgentDetailPage() {
   const sidebarUser = useSidebarUser(defaultAgentsSidebarUser)
   const params = useParams<{ slug: string }>()
@@ -62,6 +76,17 @@ export default function ConsumerAgentDetailPage() {
   const [launchState, setLaunchState] = React.useState<{ workspacePath: string; status: string } | null>(null)
   const [launchError, setLaunchError] = React.useState<string | null>(null)
   const [isLaunching, setIsLaunching] = React.useState(false)
+  const [chatInput, setChatInput] = React.useState("")
+  const [chatSessionId, setChatSessionId] = React.useState<string | null>(null)
+  const [chatError, setChatError] = React.useState<string | null>(null)
+  const [isSendingChat, setIsSendingChat] = React.useState(false)
+  const [chatMessages, setChatMessages] = React.useState<ChatMessage[]>([
+    {
+      id: buildChatMessageId(),
+      role: "system",
+      text: "Preview chat is ready. Send a message to test this agent before connecting client channels.",
+    },
+  ])
   const [displayName, setDisplayName] = React.useState(
     slug
       .split("-")
@@ -85,6 +110,58 @@ export default function ConsumerAgentDetailPage() {
     } finally {
       setIsLaunching(false)
     }
+  }
+
+  const handleSendChat = async () => {
+    const message = chatInput.trim()
+    if (!message || isSendingChat) return
+
+    const userMessage: ChatMessage = {
+      id: buildChatMessageId(),
+      role: "user",
+      text: message,
+    }
+
+    setChatError(null)
+    setChatInput("")
+    setChatMessages((prev) => [...prev, userMessage])
+    setIsSendingChat(true)
+
+    try {
+      const payload = await sendConsumerAgentChatMessage({
+        agentId: slug,
+        message,
+        sessionId: chatSessionId,
+      })
+
+      setChatSessionId(payload.chat.sessionId)
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: buildChatMessageId(),
+          role: "assistant",
+          text: payload.chat.reply,
+        },
+      ])
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "Failed to send preview chat message."
+      setChatError(messageText)
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: buildChatMessageId(),
+          role: "system",
+          text: `Preview error: ${messageText}`,
+        },
+      ])
+    } finally {
+      setIsSendingChat(false)
+    }
+  }
+
+  const handleSubmitChat = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void handleSendChat()
   }
 
   React.useEffect(() => {
@@ -115,6 +192,19 @@ export default function ConsumerAgentDetailPage() {
     return () => {
       mounted = false
     }
+  }, [slug])
+
+  React.useEffect(() => {
+    setChatMessages([
+      {
+        id: buildChatMessageId(),
+        role: "system",
+        text: "Preview chat is ready. Send a message to test this agent before connecting client channels.",
+      },
+    ])
+    setChatSessionId(null)
+    setChatError(null)
+    setChatInput("")
   }, [slug])
 
   return (
@@ -190,6 +280,69 @@ export default function ConsumerAgentDetailPage() {
                   <Input value={slug} readOnly />
                 </div>
               </div>
+            </section>
+
+            <section className="border bg-card p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-base font-semibold">Runtime Chat Preview</h2>
+                <div className="flex items-center gap-2">
+                  {chatSessionId ? (
+                    <span className="max-w-[320px] truncate border px-2 py-0.5 text-xs text-muted-foreground">
+                      Session: {chatSessionId}
+                    </span>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setChatMessages([
+                        {
+                          id: buildChatMessageId(),
+                          role: "system",
+                          text: "Preview chat reset. Send a new message to start a fresh session.",
+                        },
+                      ])
+                      setChatSessionId(null)
+                      setChatError(null)
+                    }}
+                    disabled={isSendingChat}
+                  >
+                    Clear chat
+                  </Button>
+                </div>
+              </div>
+              {chatError ? <p className="mb-2 text-sm text-red-600 dark:text-red-400">{chatError}</p> : null}
+              <div className="mb-3 max-h-80 space-y-2 overflow-y-auto border bg-muted/20 p-3">
+                {chatMessages.map((message) => (
+                  <article
+                    key={message.id}
+                    className={`rounded-md border px-3 py-2 text-sm ${
+                      message.role === "user"
+                        ? "border-primary/30 bg-primary/5"
+                        : message.role === "assistant"
+                          ? "border-emerald-500/30 bg-emerald-500/10"
+                          : "border-muted bg-background text-muted-foreground"
+                    }`}
+                  >
+                    <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {message.role === "user" ? "You" : message.role === "assistant" ? "Agent" : "System"}
+                    </p>
+                    <p className="whitespace-pre-wrap">{message.text}</p>
+                  </article>
+                ))}
+              </div>
+              <form onSubmit={handleSubmitChat} className="flex gap-2">
+                <Input
+                  value={chatInput}
+                  onChange={(event) => setChatInput(event.target.value)}
+                  placeholder="Type a message to this agent..."
+                  disabled={isSendingChat}
+                />
+                <Button type="submit" disabled={isSendingChat || chatInput.trim().length === 0}>
+                  {isSendingChat ? "Sending..." : "Send"}
+                </Button>
+              </form>
             </section>
 
             <section className="grid gap-4 lg:grid-cols-2">
