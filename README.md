@@ -25,6 +25,7 @@ For OpenClaw-backed agent discovery in both apps (especially in production), als
 - `OPENCLAW_HOME` (e.g. `/home/node/.openclaw`)
 - `OPENCLAW_CONFIG_PATH` + `OPENCLAW_AGENTS_ROOT`
 - `OPENCLAW_CONFIG_BRIDGE_URL` (fallback HTTP bridge, default probe is `http://127.0.0.1:4311/api/openclaw/config`)
+- `OPENCLAW_CLI_PATH` (absolute path to `openclaw` binary; required for runtime chat preview if `openclaw` is not on PATH)
 
 ### 2) Apply DB migration
 

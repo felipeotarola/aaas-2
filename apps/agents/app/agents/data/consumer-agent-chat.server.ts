@@ -1,6 +1,9 @@
 import "server-only"
 
 import { execFile } from "node:child_process"
+import { constants as fsConstants } from "node:fs"
+import { access } from "node:fs/promises"
+import path from "node:path"
 
 import type { ChatWithConsumerAgentResponse } from "./contracts"
 
@@ -43,6 +46,51 @@ type ExecCommandError = Error & {
   stderr?: string
 }
 
+const OPENCLAW_EXECUTABLE_ENV = "OPENCLAW_CLI_PATH"
+
+function normalizePathInput(raw: string | undefined): string {
+  if (!raw) return ""
+  return raw.trim().replace(/^['"]|['"]$/g, "")
+}
+
+async function isExecutableFile(candidatePath: string): Promise<boolean> {
+  try {
+    await access(candidatePath, fsConstants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function getOpenClawExecutableCandidates(): Promise<string[]> {
+  const explicit = normalizePathInput(process.env[OPENCLAW_EXECUTABLE_ENV])
+  const candidates = [
+    explicit,
+    "/usr/local/bin/openclaw",
+    "/usr/bin/openclaw",
+    "/opt/homebrew/bin/openclaw",
+    "/root/.local/bin/openclaw",
+    "/home/node/.local/bin/openclaw",
+    "openclaw",
+  ].filter(Boolean)
+
+  const usable: string[] = []
+
+  for (const candidate of candidates) {
+    const hasPathSeparator = candidate.includes(path.sep)
+    if (!hasPathSeparator) {
+      usable.push(candidate)
+      continue
+    }
+
+    if (await isExecutableFile(candidate)) {
+      usable.push(candidate)
+    }
+  }
+
+  return Array.from(new Set(usable))
+}
+
 export class ConsumerAgentChatError extends Error {
   constructor(
     message: string,
@@ -77,10 +125,10 @@ function parseOpenClawResponse(stdout: string): OpenClawRunResponse {
   }
 }
 
-function runOpenClawAgent(args: string[]): Promise<ExecCommandResult> {
+function runOpenClawAgentCommand(command: string, args: string[]): Promise<ExecCommandResult> {
   return new Promise((resolve, reject) => {
     execFile(
-      "openclaw",
+      command,
       args,
       {
         timeout: OPENCLAW_AGENT_TIMEOUT_MS,
@@ -125,12 +173,36 @@ export async function chatWithConsumerAgent(args: {
     commandArgs.push("--session-id", sessionId)
   }
 
-  let commandResult: ExecCommandResult
-  try {
-    commandResult = await runOpenClawAgent(commandArgs)
-  } catch (error) {
-    const execError = error as ExecCommandError
-    throw new ConsumerAgentChatError(toExecErrorMessage(execError), 502)
+  const executableCandidates = await getOpenClawExecutableCandidates()
+
+  if (executableCandidates.length === 0) {
+    throw new ConsumerAgentChatError(
+      `OpenClaw CLI is not available on this server. Set ${OPENCLAW_EXECUTABLE_ENV} to the absolute openclaw binary path.`,
+      502,
+    )
+  }
+
+  let commandResult: ExecCommandResult | null = null
+
+  for (const executable of executableCandidates) {
+    try {
+      commandResult = await runOpenClawAgentCommand(executable, commandArgs)
+      break
+    } catch (error) {
+      const execError = error as ExecCommandError
+      if (execError.code === "ENOENT") {
+        continue
+      }
+
+      throw new ConsumerAgentChatError(toExecErrorMessage(execError), 502)
+    }
+  }
+
+  if (!commandResult) {
+    throw new ConsumerAgentChatError(
+      `OpenClaw CLI executable was not found. Set ${OPENCLAW_EXECUTABLE_ENV} to the absolute openclaw binary path.`,
+      502,
+    )
   }
 
   const run = parseOpenClawResponse(commandResult.stdout)

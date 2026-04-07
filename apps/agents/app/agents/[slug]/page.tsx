@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Bot, CheckCircle2, MessageCircle, Play, Send, Smartphone } from "lucide-react"
+import { Bot, CheckCircle2, MessageCircle, Play, Send, Smartphone, X } from "lucide-react"
 import { useParams } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
@@ -80,6 +80,7 @@ export default function ConsumerAgentDetailPage() {
   const [chatSessionId, setChatSessionId] = React.useState<string | null>(null)
   const [chatError, setChatError] = React.useState<string | null>(null)
   const [isSendingChat, setIsSendingChat] = React.useState(false)
+  const [isChatOpen, setIsChatOpen] = React.useState(false)
   const [chatMessages, setChatMessages] = React.useState<ChatMessage[]>([
     {
       id: buildChatMessageId(),
@@ -205,6 +206,7 @@ export default function ConsumerAgentDetailPage() {
     setChatSessionId(null)
     setChatError(null)
     setChatInput("")
+    setIsChatOpen(false)
   }, [slug])
 
   return (
@@ -282,69 +284,6 @@ export default function ConsumerAgentDetailPage() {
               </div>
             </section>
 
-            <section className="border bg-card p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-base font-semibold">Runtime Chat Preview</h2>
-                <div className="flex items-center gap-2">
-                  {chatSessionId ? (
-                    <span className="max-w-[320px] truncate border px-2 py-0.5 text-xs text-muted-foreground">
-                      Session: {chatSessionId}
-                    </span>
-                  ) : null}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setChatMessages([
-                        {
-                          id: buildChatMessageId(),
-                          role: "system",
-                          text: "Preview chat reset. Send a new message to start a fresh session.",
-                        },
-                      ])
-                      setChatSessionId(null)
-                      setChatError(null)
-                    }}
-                    disabled={isSendingChat}
-                  >
-                    Clear chat
-                  </Button>
-                </div>
-              </div>
-              {chatError ? <p className="mb-2 text-sm text-red-600 dark:text-red-400">{chatError}</p> : null}
-              <div className="mb-3 max-h-80 space-y-2 overflow-y-auto border bg-muted/20 p-3">
-                {chatMessages.map((message) => (
-                  <article
-                    key={message.id}
-                    className={`rounded-md border px-3 py-2 text-sm ${
-                      message.role === "user"
-                        ? "border-primary/30 bg-primary/5"
-                        : message.role === "assistant"
-                          ? "border-emerald-500/30 bg-emerald-500/10"
-                          : "border-muted bg-background text-muted-foreground"
-                    }`}
-                  >
-                    <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {message.role === "user" ? "You" : message.role === "assistant" ? "Agent" : "System"}
-                    </p>
-                    <p className="whitespace-pre-wrap">{message.text}</p>
-                  </article>
-                ))}
-              </div>
-              <form onSubmit={handleSubmitChat} className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  placeholder="Type a message to this agent..."
-                  disabled={isSendingChat}
-                />
-                <Button type="submit" disabled={isSendingChat || chatInput.trim().length === 0}>
-                  {isSendingChat ? "Sending..." : "Send"}
-                </Button>
-              </form>
-            </section>
-
             <section className="grid gap-4 lg:grid-cols-2">
               {channels.map((channel) => {
                 const Icon = channel.icon
@@ -383,6 +322,91 @@ export default function ConsumerAgentDetailPage() {
                 )
               })}
             </section>
+
+            <div className="fixed bottom-4 left-4 right-4 z-40 sm:left-auto sm:right-6">
+              {isChatOpen ? (
+                <section className="mb-3 max-h-[70vh] overflow-hidden border bg-card shadow-lg sm:w-[380px]">
+                  <div className="flex items-center justify-between border-b px-3 py-2">
+                    <div>
+                      <p className="text-sm font-semibold">Runtime Chat Preview</p>
+                      {chatSessionId ? (
+                        <p className="max-w-[300px] truncate text-[11px] text-muted-foreground">
+                          Session: {chatSessionId}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setChatMessages([
+                            {
+                              id: buildChatMessageId(),
+                              role: "system",
+                              text: "Preview chat reset. Send a new message to start a fresh session.",
+                            },
+                          ])
+                          setChatSessionId(null)
+                          setChatError(null)
+                        }}
+                        disabled={isSendingChat}
+                      >
+                        Clear
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" onClick={() => setIsChatOpen(false)}>
+                        <X className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  {chatError ? <p className="px-3 pt-2 text-sm text-red-600 dark:text-red-400">{chatError}</p> : null}
+                  <div className="max-h-[45vh] space-y-2 overflow-y-auto px-3 py-3">
+                    {chatMessages.map((message) => (
+                      <article
+                        key={message.id}
+                        className={`rounded-md border px-3 py-2 text-sm ${
+                          message.role === "user"
+                            ? "border-primary/30 bg-primary/5"
+                            : message.role === "assistant"
+                              ? "border-emerald-500/30 bg-emerald-500/10"
+                              : "border-muted bg-background text-muted-foreground"
+                        }`}
+                      >
+                        <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                          {message.role === "user" ? "You" : message.role === "assistant" ? "Agent" : "System"}
+                        </p>
+                        <p className="whitespace-pre-wrap">{message.text}</p>
+                      </article>
+                    ))}
+                  </div>
+                  <form onSubmit={handleSubmitChat} className="border-t p-3">
+                    <div className="flex gap-2">
+                      <Input
+                        value={chatInput}
+                        onChange={(event) => setChatInput(event.target.value)}
+                        placeholder="Type a message to this agent..."
+                        disabled={isSendingChat}
+                      />
+                      <Button type="submit" disabled={isSendingChat || chatInput.trim().length === 0}>
+                        {isSendingChat ? "Sending..." : "Send"}
+                      </Button>
+                    </div>
+                  </form>
+                </section>
+              ) : null}
+
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => setIsChatOpen((prev) => !prev)}
+                  className="h-12 rounded-full px-4 shadow-lg"
+                >
+                  <MessageCircle className="mr-2 size-4" />
+                  {isChatOpen ? "Hide Chat" : "Open Chat"}
+                </Button>
+              </div>
+            </div>
           </>
         ) : null}
       </main>
