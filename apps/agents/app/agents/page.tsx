@@ -214,10 +214,13 @@ export default function ConsumerAgentsPage() {
                         {agent.aiModel}
                       </p>
                       {setting?.workspaceRef ? (
-                        <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <FolderKanban className="size-3.5" />
-                          Workspace: {setting.workspaceRef}
-                        </p>
+                        <div className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
+                          <p className="inline-flex items-center gap-1">
+                            <FolderKanban className="size-3.5" />
+                            Workspace ref: {setting.workspaceRef}
+                          </p>
+                          {setting.workspacePath ? <p>Path: {setting.workspacePath}</p> : null}
+                        </div>
                       ) : null}
                     </div>
                     <div className="flex items-center gap-2">

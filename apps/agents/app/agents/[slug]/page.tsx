@@ -2,12 +2,12 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Bot, CheckCircle2, MessageCircle, Send, Smartphone } from "lucide-react"
+import { Bot, CheckCircle2, MessageCircle, Play, Send, Smartphone } from "lucide-react"
 import { useParams } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { AppShell } from "@workspace/ui/components/app-shell"
-import { fetchConsumerAgentSettings } from "@/app/agents/data/consumer-agent-settings-client"
+import { fetchConsumerAgentSettings, launchConsumerAgent } from "@/app/agents/data/consumer-agent-settings-client"
 import type { ConsumerAgentSetting } from "@/app/agents/data/contracts"
 import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
 import { defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
@@ -59,12 +59,33 @@ export default function ConsumerAgentDetailPage() {
     email: true,
     webchat: true,
   })
+  const [launchState, setLaunchState] = React.useState<{ workspacePath: string; status: string } | null>(null)
+  const [launchError, setLaunchError] = React.useState<string | null>(null)
+  const [isLaunching, setIsLaunching] = React.useState(false)
   const [displayName, setDisplayName] = React.useState(
     slug
       .split("-")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" "),
   )
+
+  const handleLaunch = async () => {
+    setIsLaunching(true)
+    setLaunchError(null)
+
+    try {
+      const payload = await launchConsumerAgent(slug)
+      setLaunchState({
+        workspacePath: payload.launch.workspacePath,
+        status: payload.launch.status,
+      })
+    } catch (error) {
+      setLaunchState(null)
+      setLaunchError(error instanceof Error ? error.message : "Failed to launch agent runtime")
+    } finally {
+      setIsLaunching(false)
+    }
+  }
 
   React.useEffect(() => {
     let mounted = true
@@ -133,17 +154,32 @@ export default function ConsumerAgentDetailPage() {
                   Configure channels and client integrations for this agent.
                 </p>
                 {activeSetting?.workspaceRef ? (
-                  <p className="mt-2 text-xs text-muted-foreground">Workspace: {activeSetting.workspaceRef}</p>
+                  <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
+                    <p>Workspace ref: {activeSetting.workspaceRef}</p>
+                    {activeSetting.workspacePath ? <p>Workspace path: {activeSetting.workspacePath}</p> : null}
+                  </div>
                 ) : null}
               </div>
-              <span className="inline-flex items-center gap-1 border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-300">
-                <CheckCircle2 className="size-3.5" />
-                Active
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-700 dark:text-emerald-300">
+                  <CheckCircle2 className="size-3.5" />
+                  Active
+                </span>
+                <Button size="sm" onClick={() => void handleLaunch()} disabled={isLaunching}>
+                  <Play className="mr-1 size-3.5" />
+                  {isLaunching ? "Launching..." : "Launch runtime"}
+                </Button>
+              </div>
             </header>
 
             <section className="border bg-card p-4">
               <h2 className="mb-3 text-base font-semibold">Agent Basics</h2>
+              {launchError ? <p className="mb-3 text-sm text-red-600 dark:text-red-400">{launchError}</p> : null}
+              {launchState ? (
+                <div className="mb-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+                  Runtime {launchState.status}. Workspace: {launchState.workspacePath}
+                </div>
+              ) : null}
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs text-muted-foreground">Agent display name</label>

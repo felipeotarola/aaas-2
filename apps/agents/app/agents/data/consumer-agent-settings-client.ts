@@ -4,6 +4,15 @@ import type {
   UpsertConsumerAgentSettingResponse,
 } from "./contracts"
 
+export type LaunchConsumerAgentResponse = {
+  launch: {
+    agentId: string
+    workspaceRef: string
+    workspacePath: string
+    status: "ready"
+  }
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as { error?: string } & T
 
@@ -31,4 +40,16 @@ export async function upsertConsumerAgentSetting(
   })
 
   return parseResponse<UpsertConsumerAgentSettingResponse>(response)
+}
+
+export async function launchConsumerAgent(agentId: string): Promise<LaunchConsumerAgentResponse> {
+  const response = await fetch("/api/consumer/agents/launch", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ agentId }),
+  })
+
+  return parseResponse<LaunchConsumerAgentResponse>(response)
 }

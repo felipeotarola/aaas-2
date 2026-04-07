@@ -21,6 +21,7 @@ export type ConsumerAgentSetting = {
   isActive: boolean
   toolOverrides: Record<string, unknown>
   workspaceRef: string | null
+  workspacePath: string | null
   updatedAt: string
 }
 

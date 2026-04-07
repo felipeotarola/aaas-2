@@ -21,6 +21,12 @@ type ConsumerAgentSettingRow = {
   updated_at: string
 }
 
+export type WorkspaceResolution = {
+  workspaceRoot: string
+  workspaceRef: string
+  workspacePath: string
+}
+
 type UserMetadata = Record<string, unknown> | null | undefined
 
 type OpenClawConfig = {
@@ -174,19 +180,32 @@ async function resolveWorkspaceRoot(): Promise<string> {
   return path.join(defaultHome, "workspace")
 }
 
-async function ensureWorkspaceDirectory(workspaceRef: string): Promise<void> {
+export async function resolveWorkspaceForRef(workspaceRef: string): Promise<WorkspaceResolution> {
   const workspaceRoot = await resolveWorkspaceRoot()
-  const workspacePath = path.join(workspaceRoot, workspaceRef)
 
-  await mkdir(workspacePath, { recursive: true })
+  return {
+    workspaceRoot,
+    workspaceRef,
+    workspacePath: path.join(workspaceRoot, workspaceRef),
+  }
 }
 
-function toSetting(row: ConsumerAgentSettingRow): ConsumerAgentSetting {
+async function ensureWorkspaceDirectory(workspaceRef: string): Promise<WorkspaceResolution> {
+  const resolution = await resolveWorkspaceForRef(workspaceRef)
+  await mkdir(resolution.workspacePath, { recursive: true })
+  return resolution
+}
+
+async function toSetting(row: ConsumerAgentSettingRow): Promise<ConsumerAgentSetting> {
+  const workspaceRef = normalizeWorkspaceRef(row.workspace_ref)
+  const workspacePath = workspaceRef ? (await resolveWorkspaceForRef(workspaceRef)).workspacePath : null
+
   return {
     agentId: row.agent_id,
     isActive: row.is_active,
     toolOverrides: asPlainObject(row.tool_overrides),
-    workspaceRef: normalizeWorkspaceRef(row.workspace_ref),
+    workspaceRef,
+    workspacePath,
     updatedAt: row.updated_at,
   }
 }
@@ -220,7 +239,7 @@ export async function listConsumerAgentSettings(args: {
   const rows = (data ?? []) as ConsumerAgentSettingRow[]
 
   return {
-    settings: rows.map(toSetting),
+    settings: await Promise.all(rows.map((row) => toSetting(row))),
   }
 }
 
@@ -305,6 +324,6 @@ export async function upsertConsumerAgentSetting(args: {
   }
 
   return {
-    setting: toSetting(data),
+    setting: await toSetting(data),
   }
 }
