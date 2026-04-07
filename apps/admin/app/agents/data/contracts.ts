@@ -21,3 +21,9 @@ export type CreateOpenClawAgentRequest = {
   id?: string
   model?: string
 }
+
+export type DeleteOpenClawAgentResponse = {
+  deleted: {
+    id: string
+  }
+}

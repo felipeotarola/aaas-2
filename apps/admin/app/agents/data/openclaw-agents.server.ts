@@ -1,7 +1,7 @@
 import "server-only"
 
 import { constants as fsConstants } from "node:fs"
-import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
+import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 
@@ -11,6 +11,7 @@ type AgentConfigEntry = {
   id?: string
   model?: unknown
   workspace?: string
+  agentDir?: string
   name?: string
   displayName?: string
 }
@@ -343,6 +344,71 @@ function parseBridgeCatalogAgent(value: unknown): CatalogAgent | null {
   }
 }
 
+function toAbsolutePath(value: unknown): string | null {
+  const normalized = normalizePathInput(typeof value === "string" ? value : "")
+  if (!normalized || !path.isAbsolute(normalized)) {
+    return null
+  }
+  return path.resolve(normalized)
+}
+
+function deriveWorkspacePath(defaultWorkspace: unknown, agentId: string): string | null {
+  const base = toAbsolutePath(defaultWorkspace)
+  if (!base) return null
+  return path.resolve(`${base}-${agentId}`)
+}
+
+function canDeleteWorkspacePath(args: {
+  workspacePath: string
+  defaultWorkspace: unknown
+  agentId: string
+}): boolean {
+  const lowerAgentId = args.agentId.toLowerCase()
+  const defaultPath = toAbsolutePath(args.defaultWorkspace)
+  if (defaultPath && args.workspacePath === defaultPath) {
+    return false
+  }
+
+  // Guard against shared roots by requiring the agent id in the directory name.
+  return args.workspacePath.toLowerCase().includes(lowerAgentId)
+}
+
+function getWorkspaceDeleteTargets(args: {
+  entry?: AgentConfigEntry
+  defaults?: AgentsDefaults
+  agentId: string
+}): string[] {
+  const targets = new Set<string>()
+  const entryWorkspace = toAbsolutePath(args.entry?.workspace)
+  const derivedWorkspace = deriveWorkspacePath(args.defaults?.workspace, args.agentId)
+
+  if (entryWorkspace) targets.add(entryWorkspace)
+  if (derivedWorkspace) targets.add(derivedWorkspace)
+
+  return Array.from(targets).filter((workspacePath) =>
+    canDeleteWorkspacePath({
+      workspacePath,
+      defaultWorkspace: args.defaults?.workspace,
+      agentId: args.agentId,
+    }),
+  )
+}
+
+function getAgentDirectoryDeleteTargets(args: {
+  agentsRoot: string
+  entry?: AgentConfigEntry
+  agentId: string
+}): string[] {
+  const targets = new Set<string>([path.join(args.agentsRoot, args.agentId)])
+  const configuredAgentDir = toAbsolutePath(args.entry?.agentDir)
+  if (configuredAgentDir && configuredAgentDir.toLowerCase().includes(args.agentId.toLowerCase())) {
+    const suffix = `${path.sep}agent`
+    const candidate = configuredAgentDir.endsWith(suffix) ? path.dirname(configuredAgentDir) : configuredAgentDir
+    targets.add(candidate)
+  }
+  return Array.from(targets)
+}
+
 async function createOpenClawAgentViaBridge(args: {
   name: string
   id: string
@@ -394,6 +460,54 @@ async function createOpenClawAgentViaBridge(args: {
   }
 
   return null
+}
+
+async function deleteOpenClawAgentViaBridge(agentId: string): Promise<boolean> {
+  const bridgeCandidates = getOpenClawConfigBridgeAgentCandidates()
+
+  for (const bridgeUrl of bridgeCandidates) {
+    try {
+      const endpoint = new URL(bridgeUrl)
+      const basePath = endpoint.pathname.replace(/\/+$/, "") || "/"
+      endpoint.pathname = `${basePath}/${encodeURIComponent(agentId)}`
+      endpoint.search = ""
+      endpoint.hash = ""
+
+      const response = await fetch(endpoint.toString(), {
+        method: "DELETE",
+        cache: "no-store",
+        headers: {
+          accept: "application/json",
+        },
+        signal: AbortSignal.timeout(OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS * 2),
+      })
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null
+
+      if (!response.ok) {
+        const bridgeError = normalizePathInput(payload?.error) || `OpenClaw bridge request failed (${response.status}).`
+
+        if (response.status === 404) {
+          continue
+        }
+
+        if (response.status >= 400 && response.status < 500) {
+          throw new OpenClawAgentsError(bridgeError, response.status)
+        }
+
+        continue
+      }
+
+      return true
+    } catch (error) {
+      if (error instanceof OpenClawAgentsError) {
+        throw error
+      }
+      // try remaining candidates
+    }
+  }
+
+  return false
 }
 
 async function readOpenClawConfig(paths: OpenClawPaths): Promise<OpenClawConfig> {
@@ -528,6 +642,82 @@ export async function listOpenClawAgents(): Promise<ListOpenClawAgentsResponse> 
     defaultModel: parseModel(defaults?.model),
     availableModels: getAvailableModels(defaults),
   }
+}
+
+export async function deleteOpenClawAgent(rawAgentId: string): Promise<{ id: string }> {
+  const agentId = normalizeAgentId(rawAgentId)
+  if (!agentId) {
+    throw new OpenClawAgentsError(
+      "Invalid agent id. Use letters, numbers, hyphen, or underscore (max 64 chars).",
+      400,
+    )
+  }
+
+  if (agentId === "main") {
+    throw new OpenClawAgentsError("The main agent is protected and cannot be deleted.", 400)
+  }
+
+  const bridgeDeleted = await deleteOpenClawAgentViaBridge(agentId)
+  if (bridgeDeleted) {
+    return { id: agentId }
+  }
+
+  const paths = await resolveOpenClawPaths()
+  const config = await readOpenClawConfig(paths)
+  const defaults = config.agents?.defaults
+  const directories = await readAgentDirectoryIds(paths.agentsRoot)
+  const entries = getConfigEntryMap(config.agents?.list)
+  const entry = entries.get(agentId)
+  const hasDirectory = directories.includes(agentId)
+
+  if (!entry && !hasDirectory) {
+    throw new OpenClawAgentsError(`Agent '${agentId}' was not found.`, 404)
+  }
+
+  if (!config.agents) {
+    config.agents = {}
+  }
+
+  const existingList = Array.isArray(config.agents.list) ? config.agents.list : []
+  config.agents.list = existingList.filter((item) => normalizeAgentId(item?.id ?? "") !== agentId)
+
+  const deleteTargets = new Set<string>(
+    getAgentDirectoryDeleteTargets({
+      agentsRoot: paths.agentsRoot,
+      entry,
+      agentId,
+    }),
+  )
+  for (const workspacePath of getWorkspaceDeleteTargets({ entry, defaults, agentId })) {
+    deleteTargets.add(workspacePath)
+  }
+
+  try {
+    for (const targetPath of deleteTargets) {
+      await rm(targetPath, { recursive: true, force: true })
+    }
+    await writeOpenClawConfig(paths.configPath, config)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code
+    if (code === "EACCES" || code === "EPERM" || code === "EROFS" || code === "ENOENT") {
+      throw new OpenClawAgentsError(
+        "Unable to delete OpenClaw agent files. Config: " +
+          paths.configPath +
+          ". Agents root: " +
+          paths.agentsRoot +
+          ". Set OPENCLAW_HOME/OPENCLAW_CONFIG_PATH to a writable location, or configure OPENCLAW_CONFIG_BRIDGE_URL to a bridge that supports DELETE /api/openclaw/config/agents/{id}.",
+        500,
+      )
+    }
+
+    if (error instanceof Error && error.message.trim()) {
+      throw new OpenClawAgentsError("Failed to delete OpenClaw agent: " + error.message, 500)
+    }
+
+    throw new OpenClawAgentsError("Failed to delete OpenClaw agent due to an unexpected filesystem error.", 500)
+  }
+
+  return { id: agentId }
 }
 
 export async function createOpenClawAgent(input: CreateOpenClawAgentRequest): Promise<CatalogAgent> {

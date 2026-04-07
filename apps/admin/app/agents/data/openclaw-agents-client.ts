@@ -1,4 +1,9 @@
-import type { CatalogAgent, CreateOpenClawAgentRequest, ListOpenClawAgentsResponse } from "./contracts"
+import type {
+  CatalogAgent,
+  CreateOpenClawAgentRequest,
+  DeleteOpenClawAgentResponse,
+  ListOpenClawAgentsResponse,
+} from "./contracts"
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as { error?: string } & T
@@ -27,4 +32,12 @@ export async function createOpenClawAgent(
   })
 
   return parseResponse<{ agent: CatalogAgent }>(response)
+}
+
+export async function deleteOpenClawAgent(agentId: string): Promise<DeleteOpenClawAgentResponse> {
+  const query = new URLSearchParams({ id: agentId })
+  const response = await fetch(`/api/openclaw/agents?${query.toString()}`, {
+    method: "DELETE",
+  })
+  return parseResponse<DeleteOpenClawAgentResponse>(response)
 }

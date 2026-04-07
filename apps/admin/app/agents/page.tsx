@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Bot, LayoutDashboard, Plus, Settings2, Users } from "lucide-react"
+import { Bot, LayoutDashboard, Plus, Settings2, Trash2, Users } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import {
@@ -15,7 +15,11 @@ import { AppShell, type AppShellData } from "@workspace/ui/components/app-shell"
 import { useSidebarUser, type SidebarUser } from "@/lib/auth/use-sidebar-user"
 
 import type { CatalogAgent } from "@/app/agents/data/contracts"
-import { createOpenClawAgent, fetchOpenClawAgents } from "@/app/agents/data/openclaw-agents-client"
+import {
+  createOpenClawAgent,
+  deleteOpenClawAgent,
+  fetchOpenClawAgents,
+} from "@/app/agents/data/openclaw-agents-client"
 
 const defaultAdminSidebarUser: SidebarUser = {
   name: "Admin User",
@@ -68,6 +72,8 @@ export default function AdminAgentsPage() {
   const [isCreateOpen, setIsCreateOpen] = React.useState(false)
   const [isSaving, setIsSaving] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
+  const [deletingAgentId, setDeletingAgentId] = React.useState<string | null>(null)
   const [newAgentName, setNewAgentName] = React.useState("")
   const [newAgentId, setNewAgentId] = React.useState("")
   const [newAgentModel, setNewAgentModel] = React.useState(PRIMARY_FALLBACK_MODEL)
@@ -131,6 +137,28 @@ export default function AdminAgentsPage() {
       setCreateError(error instanceof Error ? error.message : "Failed to create agent")
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleDeleteAgent = async (agent: CatalogAgent) => {
+    if (agent.id === "main") return
+    if (deletingAgentId) return
+
+    const confirmed = window.confirm(
+      `Delete '${agent.name}' (${agent.id})? This will remove the agent config, files, and workspace.`,
+    )
+    if (!confirmed) return
+
+    setDeleteError(null)
+    setDeletingAgentId(agent.id)
+
+    try {
+      await deleteOpenClawAgent(agent.id)
+      setCatalogItems((prev) => prev.filter((item) => item.id !== agent.id))
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Failed to delete agent")
+    } finally {
+      setDeletingAgentId(null)
     }
   }
 
@@ -236,6 +264,9 @@ export default function AdminAgentsPage() {
               {isLoading ? "Loading..." : "Refresh"}
             </Button>
           </div>
+          {deleteError ? (
+            <p className="border-b px-4 py-2 text-sm text-red-600 dark:text-red-400">{deleteError}</p>
+          ) : null}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm">
               <thead>
@@ -269,9 +300,22 @@ export default function AdminAgentsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Button size="sm" variant="secondary" disabled>
-                        Managed by OpenClaw
-                      </Button>
+                      {agent.id === "main" ? (
+                        <Button size="sm" variant="secondary" disabled>
+                          Protected
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                          onClick={() => void handleDeleteAgent(agent)}
+                          disabled={Boolean(deletingAgentId)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          {deletingAgentId === agent.id ? "Deleting..." : "Delete"}
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}

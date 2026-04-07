@@ -4,6 +4,7 @@ import type { CreateOpenClawAgentRequest } from "@/app/agents/data/contracts"
 import {
   OpenClawAgentsError,
   createOpenClawAgent,
+  deleteOpenClawAgent,
   listOpenClawAgents,
 } from "@/app/agents/data/openclaw-agents.server"
 import { isAdminUser } from "@/lib/auth/profiles"
@@ -48,6 +49,26 @@ export async function POST(request: Request) {
   try {
     const agent = await createOpenClawAgent(input)
     return NextResponse.json({ agent }, { status: 201 })
+  } catch (error) {
+    return toErrorResponse(error)
+  }
+}
+
+export async function DELETE(request: Request) {
+  const authError = await ensureAdmin()
+  if (authError) return authError
+
+  const url = new URL(request.url)
+  const rawId = url.searchParams.get("id") ?? ""
+  const agentId = rawId.trim()
+
+  if (!agentId) {
+    return NextResponse.json({ error: "Agent id is required." }, { status: 400 })
+  }
+
+  try {
+    const deleted = await deleteOpenClawAgent(agentId)
+    return NextResponse.json({ deleted })
   } catch (error) {
     return toErrorResponse(error)
   }
