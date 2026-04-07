@@ -25,6 +25,25 @@ export type ConsumerAgentSetting = {
   updatedAt: string
 }
 
+export type TelegramDmPolicy = "pairing" | "allowlist" | "open" | "disabled"
+
+export type ConsumerTelegramConnection = {
+  connected: boolean
+  accountId: string
+  botId: number | null
+  botUsername: string | null
+  botDisplayName: string | null
+  tokenHint: string | null
+  webhookUrl: string | null
+  webhookConfigured: boolean
+  dmPolicy: TelegramDmPolicy
+  allowFrom: string[]
+  requireMention: boolean
+  connectedAt: string | null
+  disconnectedAt: string | null
+  lastVerifiedAt: string | null
+}
+
 export type ListConsumerAgentSettingsResponse = {
   settings: ConsumerAgentSetting[]
 }
@@ -55,4 +74,26 @@ export type ChatWithConsumerAgentResponse = {
     model: string | null
     provider: string | null
   }
+}
+
+export type ConnectConsumerAgentTelegramRequest = {
+  agentId: string
+  botToken: string
+  accountId?: string
+  webhookUrl?: string | null
+  dmPolicy?: TelegramDmPolicy
+  allowFrom?: string[]
+  requireMention?: boolean
+}
+
+export type ConnectConsumerAgentTelegramResponse = {
+  telegram: ConsumerTelegramConnection
+}
+
+export type DisconnectConsumerAgentTelegramRequest = {
+  agentId: string
+}
+
+export type DisconnectConsumerAgentTelegramResponse = {
+  telegram: ConsumerTelegramConnection
 }

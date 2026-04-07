@@ -2,22 +2,26 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Bot, CheckCircle2, MessageCircle, Play, Send, Smartphone, X } from "lucide-react"
+import { Bot, CheckCircle2, MessageCircle, Play, Smartphone, X } from "lucide-react"
 import { useParams } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import { AppShell } from "@workspace/ui/components/app-shell"
 import {
+  connectConsumerAgentTelegram,
+  disconnectConsumerAgentTelegram,
   fetchConsumerAgentSettings,
   launchConsumerAgent,
   sendConsumerAgentChatMessage,
 } from "@/app/agents/data/consumer-agent-settings-client"
-import type { ConsumerAgentSetting } from "@/app/agents/data/contracts"
+import type { ConsumerAgentSetting, ConsumerTelegramConnection, TelegramDmPolicy } from "@/app/agents/data/contracts"
 import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
 import { defaultAgentsSidebarUser, getConsumerSidebar } from "../data"
+import { TelegramConnectCard } from "./telegram-connect-card"
+import { parseAllowFromInput, parseTelegramConnection } from "./telegram-connect-utils"
 
 type Channel = {
-  key: "telegram" | "whatsapp" | "email" | "webchat"
+  key: "whatsapp" | "email" | "webchat"
   label: string
   description: string
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
@@ -30,12 +34,6 @@ type ChatMessage = {
 }
 
 const channels: Channel[] = [
-  {
-    key: "telegram",
-    label: "Telegram",
-    description: "Connect bot token + webhook to deliver agent replies in Telegram.",
-    icon: Send,
-  },
   {
     key: "whatsapp",
     label: "WhatsApp",
@@ -67,8 +65,16 @@ export default function ConsumerAgentDetailPage() {
   const [isAllowed, setIsAllowed] = React.useState<boolean | null>(null)
   const [activeSetting, setActiveSetting] = React.useState<ConsumerAgentSetting | null>(null)
   const [accessError, setAccessError] = React.useState<string | null>(null)
+  const [telegramConnection, setTelegramConnection] = React.useState<ConsumerTelegramConnection | null>(null)
+  const [telegramBotToken, setTelegramBotToken] = React.useState("")
+  const [telegramAccountId, setTelegramAccountId] = React.useState("default")
+  const [telegramWebhookUrl, setTelegramWebhookUrl] = React.useState("")
+  const [telegramAllowFrom, setTelegramAllowFrom] = React.useState("")
+  const [telegramDmPolicy, setTelegramDmPolicy] = React.useState<TelegramDmPolicy>("pairing")
+  const [telegramRequireMention, setTelegramRequireMention] = React.useState(true)
+  const [telegramError, setTelegramError] = React.useState<string | null>(null)
+  const [isUpdatingTelegram, setIsUpdatingTelegram] = React.useState(false)
   const [connected, setConnected] = React.useState<Record<string, boolean>>({
-    telegram: false,
     whatsapp: false,
     email: true,
     webchat: true,
@@ -110,6 +116,48 @@ export default function ConsumerAgentDetailPage() {
       setLaunchError(error instanceof Error ? error.message : "Failed to launch agent runtime")
     } finally {
       setIsLaunching(false)
+    }
+  }
+
+  const handleConnectTelegram = async () => {
+    if (isUpdatingTelegram) return
+
+    setIsUpdatingTelegram(true)
+    setTelegramError(null)
+
+    try {
+      const payload = await connectConsumerAgentTelegram({
+        agentId: slug,
+        botToken: telegramBotToken,
+        accountId: telegramAccountId,
+        webhookUrl: telegramWebhookUrl || null,
+        dmPolicy: telegramDmPolicy,
+        allowFrom: parseAllowFromInput(telegramAllowFrom),
+        requireMention: telegramRequireMention,
+      })
+
+      setTelegramConnection(payload.telegram)
+      setTelegramBotToken("")
+    } catch (error) {
+      setTelegramError(error instanceof Error ? error.message : "Failed to connect Telegram.")
+    } finally {
+      setIsUpdatingTelegram(false)
+    }
+  }
+
+  const handleDisconnectTelegram = async () => {
+    if (isUpdatingTelegram) return
+
+    setIsUpdatingTelegram(true)
+    setTelegramError(null)
+
+    try {
+      const payload = await disconnectConsumerAgentTelegram({ agentId: slug })
+      setTelegramConnection(payload.telegram)
+    } catch (error) {
+      setTelegramError(error instanceof Error ? error.message : "Failed to disconnect Telegram.")
+    } finally {
+      setIsUpdatingTelegram(false)
     }
   }
 
@@ -179,6 +227,14 @@ export default function ConsumerAgentDetailPage() {
         if (mounted) {
           setActiveSetting(setting)
           setIsAllowed(Boolean(setting))
+          const connection = parseTelegramConnection(setting)
+          setTelegramConnection(connection)
+          setTelegramAccountId(connection?.accountId ?? "default")
+          setTelegramWebhookUrl(connection?.webhookUrl ?? "")
+          setTelegramAllowFrom(connection?.allowFrom.join(", ") ?? "")
+          setTelegramDmPolicy(connection?.dmPolicy ?? "pairing")
+          setTelegramRequireMention(connection?.requireMention ?? true)
+          setTelegramError(null)
         }
       } catch (error) {
         if (mounted) {
@@ -207,6 +263,9 @@ export default function ConsumerAgentDetailPage() {
     setChatError(null)
     setChatInput("")
     setIsChatOpen(false)
+    setTelegramBotToken("")
+    setTelegramError(null)
+    setIsUpdatingTelegram(false)
   }, [slug])
 
   return (
@@ -285,6 +344,26 @@ export default function ConsumerAgentDetailPage() {
             </section>
 
             <section className="grid gap-4 lg:grid-cols-2">
+              <TelegramConnectCard
+                connection={telegramConnection}
+                botToken={telegramBotToken}
+                accountId={telegramAccountId}
+                webhookUrl={telegramWebhookUrl}
+                allowFrom={telegramAllowFrom}
+                dmPolicy={telegramDmPolicy}
+                requireMention={telegramRequireMention}
+                isSaving={isUpdatingTelegram}
+                error={telegramError}
+                onBotTokenChange={setTelegramBotToken}
+                onAccountIdChange={setTelegramAccountId}
+                onWebhookUrlChange={setTelegramWebhookUrl}
+                onAllowFromChange={setTelegramAllowFrom}
+                onDmPolicyChange={setTelegramDmPolicy}
+                onRequireMentionChange={setTelegramRequireMention}
+                onConnect={() => void handleConnectTelegram()}
+                onDisconnect={() => void handleDisconnectTelegram()}
+              />
+
               {channels.map((channel) => {
                 const Icon = channel.icon
                 const isConnected = connected[channel.key]

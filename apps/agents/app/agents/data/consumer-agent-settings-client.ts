@@ -1,6 +1,10 @@
 import type {
   ChatWithConsumerAgentRequest,
   ChatWithConsumerAgentResponse,
+  ConnectConsumerAgentTelegramRequest,
+  ConnectConsumerAgentTelegramResponse,
+  DisconnectConsumerAgentTelegramRequest,
+  DisconnectConsumerAgentTelegramResponse,
   ListConsumerAgentSettingsResponse,
   UpsertConsumerAgentSettingRequest,
   UpsertConsumerAgentSettingResponse,
@@ -68,4 +72,32 @@ export async function sendConsumerAgentChatMessage(
   })
 
   return parseResponse<ChatWithConsumerAgentResponse>(response)
+}
+
+export async function connectConsumerAgentTelegram(
+  input: ConnectConsumerAgentTelegramRequest,
+): Promise<ConnectConsumerAgentTelegramResponse> {
+  const response = await fetch("/api/consumer/agents/telegram", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  })
+
+  return parseResponse<ConnectConsumerAgentTelegramResponse>(response)
+}
+
+export async function disconnectConsumerAgentTelegram(
+  input: DisconnectConsumerAgentTelegramRequest,
+): Promise<DisconnectConsumerAgentTelegramResponse> {
+  const response = await fetch("/api/consumer/agents/telegram", {
+    method: "DELETE",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  })
+
+  return parseResponse<DisconnectConsumerAgentTelegramResponse>(response)
 }
