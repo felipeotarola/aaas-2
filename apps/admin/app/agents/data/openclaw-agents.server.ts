@@ -70,11 +70,35 @@ function shouldDisableBridgeFallback(): boolean {
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
 }
 
+function deriveConfigBridgeUrlFromAgentBridge(raw: string | undefined): string {
+  const normalized = normalizePathInput(raw)
+  if (!normalized) return ""
+
+  const untemplated = normalized.replace(/\{agentId\}/gi, "assistant-agent")
+
+  try {
+    const url = new URL(untemplated)
+    url.pathname = "/api/openclaw/config"
+    url.search = ""
+    url.hash = ""
+    return url.toString()
+  } catch {
+    return ""
+  }
+}
+
 function getOpenClawConfigBridgeCandidates(): string[] {
   const explicitBridgeUrl = normalizePathInput(process.env.OPENCLAW_CONFIG_BRIDGE_URL)
-  if (explicitBridgeUrl) return [explicitBridgeUrl]
-  if (shouldDisableBridgeFallback()) return []
-  return [DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL]
+  const derivedBridgeUrl = deriveConfigBridgeUrlFromAgentBridge(process.env.OPENCLAW_AGENT_BRIDGE_URL)
+
+  const candidates: string[] = []
+  if (explicitBridgeUrl) candidates.push(explicitBridgeUrl)
+  if (derivedBridgeUrl) candidates.push(derivedBridgeUrl)
+  if (!explicitBridgeUrl && !shouldDisableBridgeFallback()) {
+    candidates.push(DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL)
+  }
+
+  return Array.from(new Set(candidates))
 }
 
 async function readOpenClawConfigFromBridge(): Promise<OpenClawConfig | null> {
@@ -108,6 +132,26 @@ async function readOpenClawConfigFromBridge(): Promise<OpenClawConfig | null> {
   }
 
   return null
+}
+
+function getOpenClawConfigBridgeAgentCandidates(): string[] {
+  const bridgeCandidates = getOpenClawConfigBridgeCandidates()
+  const candidates: string[] = []
+
+  for (const bridgeUrl of bridgeCandidates) {
+    try {
+      const url = new URL(bridgeUrl)
+      const basePath = url.pathname.replace(/\/+$/, "") || "/"
+      url.pathname = `${basePath}/agents`
+      url.search = ""
+      url.hash = ""
+      candidates.push(url.toString())
+    } catch {
+      // ignore invalid candidates
+    }
+  }
+
+  return Array.from(new Set(candidates))
 }
 
 async function getOpenClawHomeCandidates(): Promise<string[]> {
@@ -272,6 +316,86 @@ function createCatalogAgent(args: {
   }
 }
 
+function parseBridgeCatalogAgent(value: unknown): CatalogAgent | null {
+  if (!isRecord(value)) return null
+
+  const id = normalizeAgentId(String(value.id ?? ""))
+  if (!id) return null
+
+  const name = normalizePathInput(typeof value.name === "string" ? value.name : "") || toDisplayName(id)
+  const aiModel = normalizePathInput(typeof value.aiModel === "string" ? value.aiModel : "") || "not-set"
+  const workspace = normalizePathInput(typeof value.workspace === "string" ? value.workspace : "") || "default"
+  const rawStatus = normalizePathInput(typeof value.status === "string" ? value.status : "")
+
+  const status: CatalogAgent["status"] =
+    rawStatus === "published" || rawStatus === "draft" || rawStatus === "paused" ? rawStatus : "published"
+
+  return {
+    id,
+    name,
+    type: "custom",
+    aiProvider: "openclaw",
+    aiModel,
+    version: "openclaw",
+    status,
+    activeUsers: typeof value.activeUsers === "number" && Number.isFinite(value.activeUsers) ? value.activeUsers : 0,
+    workspace,
+  }
+}
+
+async function createOpenClawAgentViaBridge(args: {
+  name: string
+  id: string
+  model?: string
+}): Promise<CatalogAgent | null> {
+  const bridgeCandidates = getOpenClawConfigBridgeAgentCandidates()
+
+  for (const bridgeUrl of bridgeCandidates) {
+    try {
+      const response = await fetch(bridgeUrl, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: args.name,
+          id: args.id,
+          model: args.model,
+        }),
+        signal: AbortSignal.timeout(OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS * 2),
+      })
+
+      const payload = (await response.json().catch(() => null)) as { error?: string; agent?: unknown } | null
+
+      if (!response.ok) {
+        const bridgeError = normalizePathInput(payload?.error) || `OpenClaw bridge request failed (${response.status}).`
+
+        if (response.status === 404) {
+          continue
+        }
+
+        if (response.status >= 400 && response.status < 500) {
+          throw new OpenClawAgentsError(bridgeError, response.status)
+        }
+
+        continue
+      }
+
+      const agent = parseBridgeCatalogAgent(payload?.agent)
+      if (agent) return agent
+    } catch (error) {
+      if (error instanceof OpenClawAgentsError) {
+        throw error
+      }
+      // try remaining candidates
+    }
+  }
+
+  return null
+}
+
 async function readOpenClawConfig(paths: OpenClawPaths): Promise<OpenClawConfig> {
   let raw = ""
   try {
@@ -424,13 +548,24 @@ export async function createOpenClawAgent(input: CreateOpenClawAgentRequest): Pr
     )
   }
 
+  const rawModel = typeof (input as { model?: unknown })?.model === "string" ? (input as { model: string }).model : ""
+  const requestedModel = rawModel.trim() || undefined
+
+  const bridgeCreated = await createOpenClawAgentViaBridge({
+    name,
+    id: agentId,
+    model: requestedModel,
+  })
+  if (bridgeCreated) {
+    return bridgeCreated
+  }
+
   const paths = await resolveOpenClawPaths()
   const config = await readOpenClawConfig(paths)
 
   const defaults = config.agents?.defaults
   const defaultModel = parseModel(defaults?.model)
-  const rawModel = typeof (input as { model?: unknown })?.model === "string" ? (input as { model: string }).model : ""
-  const selectedModel = rawModel.trim() || defaultModel || undefined
+  const selectedModel = requestedModel || defaultModel || undefined
 
   const directories = await readAgentDirectoryIds(paths.agentsRoot)
   const existingEntries = getConfigEntryMap(config.agents?.list)
@@ -441,11 +576,11 @@ export async function createOpenClawAgent(input: CreateOpenClawAgentRequest): Pr
 
   const nextEntry: AgentConfigEntry = {
     id: agentId,
-    displayName: name,
+    name,
   }
 
   if (selectedModel) {
-    nextEntry.model = { primary: selectedModel }
+    nextEntry.model = selectedModel
   }
 
   if (!config.agents) {
@@ -466,13 +601,13 @@ export async function createOpenClawAgent(input: CreateOpenClawAgentRequest): Pr
     })
   } catch (error) {
     const code = (error as NodeJS.ErrnoException)?.code
-    if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+    if (code === "EACCES" || code === "EPERM" || code === "EROFS" || code === "ENOENT") {
       throw new OpenClawAgentsError(
         "Unable to write OpenClaw agent files. Config: " +
           paths.configPath +
           ". Agents root: " +
           paths.agentsRoot +
-          ". Set OPENCLAW_HOME/OPENCLAW_CONFIG_PATH to a writable location or run this API where OpenClaw files are writable.",
+          ". Set OPENCLAW_HOME/OPENCLAW_CONFIG_PATH to a writable location, or configure OPENCLAW_CONFIG_BRIDGE_URL to a bridge that supports POST /api/openclaw/config/agents.",
         500,
       )
     }
