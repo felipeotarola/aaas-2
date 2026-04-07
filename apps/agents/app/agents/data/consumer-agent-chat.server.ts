@@ -3,6 +3,7 @@ import "server-only"
 import { execFile } from "node:child_process"
 import { constants as fsConstants } from "node:fs"
 import { access } from "node:fs/promises"
+import { homedir } from "node:os"
 import path from "node:path"
 
 import type { ChatWithConsumerAgentResponse } from "./contracts"
@@ -64,8 +65,11 @@ async function isExecutableFile(candidatePath: string): Promise<boolean> {
 
 async function getOpenClawExecutableCandidates(): Promise<string[]> {
   const explicit = normalizePathInput(process.env[OPENCLAW_EXECUTABLE_ENV])
+  const runtimeHome = normalizePathInput(homedir())
   const candidates = [
     explicit,
+    runtimeHome ? path.join(runtimeHome, ".local", "bin", "openclaw") : "",
+    runtimeHome ? path.join(runtimeHome, ".npm-global", "bin", "openclaw") : "",
     "/usr/local/bin/openclaw",
     "/usr/bin/openclaw",
     "/opt/homebrew/bin/openclaw",
@@ -199,8 +203,9 @@ export async function chatWithConsumerAgent(args: {
   }
 
   if (!commandResult) {
+    const checked = executableCandidates.join(", ")
     throw new ConsumerAgentChatError(
-      `OpenClaw CLI executable was not found. Set ${OPENCLAW_EXECUTABLE_ENV} to the absolute openclaw binary path.`,
+      `OpenClaw CLI executable was not found. Checked: ${checked}. Set ${OPENCLAW_EXECUTABLE_ENV} to the absolute openclaw binary path.`,
       502,
     )
   }
