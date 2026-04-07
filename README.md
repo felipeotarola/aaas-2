@@ -26,6 +26,8 @@ For OpenClaw-backed agent discovery in both apps (especially in production), als
 - `OPENCLAW_CONFIG_PATH` + `OPENCLAW_AGENTS_ROOT`
 - `OPENCLAW_CONFIG_BRIDGE_URL` (fallback HTTP bridge, default probe is `http://127.0.0.1:4311/api/openclaw/config`)
 - `OPENCLAW_CLI_PATH` (absolute path to `openclaw` binary; required for runtime chat preview if `openclaw` is not on PATH)
+- `OPENCLAW_AGENT_BRIDGE_URL` (optional runtime chat bridge URL, e.g. `https://api.felipeotarola.com/api/openclaw/assistant-chat/{agentId}` for hosted platforms like Vercel)
+- `OPENCLAW_AGENT_BRIDGE_TOKEN` (optional bearer token for chat bridge authorization)
 
 ### 2) Apply DB migration
 
