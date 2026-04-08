@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { Bot, LayoutDashboard, Plus, Settings2, Trash2, Users } from "lucide-react"
+import Link from "next/link"
+import { Bot, FileCode2, LayoutDashboard, Plus, Settings2, Trash2, Users } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Input } from "@workspace/ui/components/input"
 import {
@@ -325,22 +326,30 @@ export default function AdminAgentsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {agent.id === "main" ? (
-                        <Button size="sm" variant="secondary" disabled>
-                          Protected
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="secondary" asChild>
+                          <Link href={`/agents/${encodeURIComponent(agent.id)}`} className="gap-1">
+                            <FileCode2 className="size-3.5" />
+                            Core files
+                          </Link>
                         </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                          onClick={() => void handleDeleteAgent(agent)}
-                          disabled={Boolean(deletingAgentId)}
-                        >
-                          <Trash2 className="size-3.5" />
-                          {deletingAgentId === agent.id ? "Deleting..." : "Delete"}
-                        </Button>
-                      )}
+                        {agent.id === "main" ? (
+                          <Button size="sm" variant="secondary" disabled>
+                            Protected
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                            onClick={() => void handleDeleteAgent(agent)}
+                            disabled={Boolean(deletingAgentId)}
+                          >
+                            <Trash2 className="size-3.5" />
+                            {deletingAgentId === agent.id ? "Deleting..." : "Delete"}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

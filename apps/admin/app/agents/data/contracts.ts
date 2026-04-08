@@ -39,3 +39,29 @@ export type DeleteOpenClawAgentResponse = {
     id: string
   }
 }
+
+export type AgentCoreFileKind =
+  | "AGENTS"
+  | "SOUL"
+  | "TOOLS"
+  | "IDENTITY"
+  | "USER"
+  | "HEARTBEAT"
+  | "BOOTSTRAP"
+  | "MEMORY"
+
+export type AgentCoreFile = {
+  kind: AgentCoreFileKind
+  fileName: string
+  resolvedPath: string | null
+  exists: boolean
+  content: string
+  truncated: boolean
+  error: string | null
+}
+
+export type GetOpenClawAgentCoreFilesResponse = {
+  agent: CatalogAgent
+  workspacePath: string | null
+  coreFiles: AgentCoreFile[]
+}

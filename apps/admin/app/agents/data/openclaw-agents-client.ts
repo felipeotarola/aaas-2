@@ -2,6 +2,7 @@ import type {
   CatalogAgent,
   CreateOpenClawAgentRequest,
   DeleteOpenClawAgentResponse,
+  GetOpenClawAgentCoreFilesResponse,
   ListOpenClawAgentsResponse,
 } from "./contracts"
 
@@ -40,4 +41,12 @@ export async function deleteOpenClawAgent(agentId: string): Promise<DeleteOpenCl
     method: "DELETE",
   })
   return parseResponse<DeleteOpenClawAgentResponse>(response)
+}
+
+export async function fetchOpenClawAgentCoreFiles(agentId: string): Promise<GetOpenClawAgentCoreFilesResponse> {
+  const encodedAgentId = encodeURIComponent(agentId)
+  const response = await fetch(`/api/openclaw/agents/${encodedAgentId}/core-files`, {
+    cache: "no-store",
+  })
+  return parseResponse<GetOpenClawAgentCoreFilesResponse>(response)
 }
