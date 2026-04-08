@@ -12,6 +12,7 @@ import type {
   TelegramDmPolicy,
 } from "./contracts"
 import { listConsumerAgentSettings, upsertConsumerAgentSetting } from "./consumer-agent-settings.server"
+import { OpenClawChannelSyncError, syncTelegramChannelAccount } from "./openclaw-channel-sync.server"
 
 type UserMetadata = Record<string, unknown> | null | undefined
 
@@ -255,18 +256,30 @@ export async function connectConsumerAgentTelegram(args: {
     agentId,
   })
 
+  const previousConnection = parseTelegramConnection(setting)
+  const accountId = normalizeAccountId(args.input.accountId, previousConnection?.accountId ?? "default")
+
   const botInfo = await callTelegramApi(botToken, "getMe")
+  try {
+    await syncTelegramChannelAccount({ accountId, botToken })
+  } catch (error) {
+    if (error instanceof OpenClawChannelSyncError) {
+      throw new ConsumerAgentTelegramError(error.message, error.statusCode)
+    }
+
+    throw error
+  }
+
   const webhookUrl = normalizeWebhookUrl(args.input.webhookUrl)
   if (webhookUrl) {
     await callTelegramApi(botToken, "setWebhook", { url: webhookUrl })
   }
 
   const now = new Date().toISOString()
-  const previousConnection = parseTelegramConnection(setting)
 
   const connection: ConsumerTelegramConnection = {
     connected: true,
-    accountId: normalizeAccountId(args.input.accountId, previousConnection?.accountId ?? "default"),
+    accountId,
     botId: asNumber(botInfo.id),
     botUsername: asString(botInfo.username),
     botDisplayName: asString(botInfo.first_name),

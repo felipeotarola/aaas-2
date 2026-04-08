@@ -100,7 +100,9 @@ export function TelegramConnectCard(props: TelegramConnectCardProps) {
             placeholder="123456789:AA..."
             autoComplete="off"
           />
-          <p className="text-xs text-muted-foreground">Token is used for verification only and is never stored.</p>
+          <p className="text-xs text-muted-foreground">
+            Token is verified with Telegram and sent to OpenClaw runtime; this page only keeps a masked hint.
+          </p>
         </div>
 
         <div className="grid gap-1.5 md:grid-cols-2 md:gap-3">
