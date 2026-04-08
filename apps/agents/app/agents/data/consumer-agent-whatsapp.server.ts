@@ -20,11 +20,16 @@ import {
   syncWhatsAppChannelAccount,
   waitForWhatsAppWebLogin,
 } from "./openclaw-whatsapp-sync.server"
-import { OpenClawWhatsAppBridgeError, bindBridgeWhatsAppAccountToAgent } from "./openclaw-whatsapp-bridge.server"
+import {
+  OpenClawWhatsAppBridgeError,
+  bindBridgeWhatsAppAccountToAgent,
+  removeBridgeWhatsAppAccount,
+} from "./openclaw-whatsapp-bridge.server"
 
 type UserMetadata = Record<string, unknown> | null | undefined
 
 const AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i
+const DEFAULT_WHATSAPP_ACCOUNT_PLACEHOLDER = "default"
 
 export class ConsumerAgentWhatsAppError extends Error {
   constructor(
@@ -85,6 +90,32 @@ function normalizeAccountId(raw: string | undefined, fallback = "default"): stri
   return normalized || fallback
 }
 
+function buildScopedDefaultAccountId(agentId: string): string {
+  return normalizeAccountId(`wa-${agentId}`, DEFAULT_WHATSAPP_ACCOUNT_PLACEHOLDER)
+}
+
+function resolveWhatsAppAccountId(args: {
+  requestedAccountId: string | undefined
+  previousConnection: ConsumerWhatsAppConnection | null
+  agentId: string
+}): string {
+  const requestedAccountId = normalizeAccountId(args.requestedAccountId, "")
+  if (requestedAccountId && requestedAccountId !== DEFAULT_WHATSAPP_ACCOUNT_PLACEHOLDER) {
+    return requestedAccountId
+  }
+
+  const previousAccountId = normalizeAccountId(args.previousConnection?.accountId, "")
+  if (previousAccountId && previousAccountId !== DEFAULT_WHATSAPP_ACCOUNT_PLACEHOLDER) {
+    return previousAccountId
+  }
+
+  if (previousAccountId === DEFAULT_WHATSAPP_ACCOUNT_PLACEHOLDER && args.previousConnection?.connected) {
+    return DEFAULT_WHATSAPP_ACCOUNT_PLACEHOLDER
+  }
+
+  return buildScopedDefaultAccountId(args.agentId)
+}
+
 function normalizeTimeoutMs(raw: number | undefined, fallback: number): number {
   if (typeof raw !== "number" || !Number.isFinite(raw)) {
     return fallback
@@ -143,6 +174,75 @@ function isTerminalDisconnectedMessage(message: string): boolean {
   return normalized.includes("logged out") || normalized.includes("login failed") || normalized.includes("not linked")
 }
 
+async function persistWhatsAppConnection(args: {
+  supabase: SupabaseClient
+  userId: string
+  userEmail?: string | null
+  userMetadata?: UserMetadata
+  setting: ConsumerAgentSetting
+  agentId: string
+  connection: ConsumerWhatsAppConnection
+}) {
+  await upsertConsumerAgentSetting({
+    supabase: args.supabase,
+    userId: args.userId,
+    userEmail: args.userEmail,
+    userMetadata: args.userMetadata,
+    input: {
+      agentId: args.agentId,
+      isActive: true,
+      workspaceRef: args.setting.workspaceRef,
+      toolOverrides: withWhatsAppConnection(args.setting, args.connection),
+    },
+  })
+}
+
+async function disconnectOtherAgentWhatsAppConnectionsForAccount(args: {
+  supabase: SupabaseClient
+  userId: string
+  userEmail?: string | null
+  userMetadata?: UserMetadata
+  accountId: string
+  excludeAgentId: string
+  reason: string
+}) {
+  const settingsPayload = await listConsumerAgentSettings({
+    supabase: args.supabase,
+    userId: args.userId,
+  })
+
+  const now = new Date().toISOString()
+  for (const candidate of settingsPayload.settings) {
+    if (!candidate.isActive || candidate.agentId === args.excludeAgentId) continue
+
+    const existingConnection = parseWhatsAppConnection(candidate)
+    if (!existingConnection?.connected) continue
+
+    const candidateAccountId = normalizeAccountId(existingConnection.accountId, "")
+    if (candidateAccountId !== args.accountId) continue
+
+    const disconnectedConnection: ConsumerWhatsAppConnection = {
+      connected: false,
+      accountId: args.accountId,
+      linkedIdentity: null,
+      lastLoginMessage: args.reason,
+      connectedAt: null,
+      disconnectedAt: now,
+      lastVerifiedAt: null,
+    }
+
+    await persistWhatsAppConnection({
+      supabase: args.supabase,
+      userId: args.userId,
+      userEmail: args.userEmail,
+      userMetadata: args.userMetadata,
+      setting: candidate,
+      agentId: candidate.agentId,
+      connection: disconnectedConnection,
+    })
+  }
+}
+
 async function findActiveSetting(args: {
   supabase: SupabaseClient
   userId: string
@@ -180,7 +280,11 @@ export async function startConsumerAgentWhatsAppLogin(args: {
   })
 
   const previousConnection = parseWhatsAppConnection(setting)
-  const accountId = normalizeAccountId(args.input.accountId, previousConnection?.accountId ?? "default")
+  const accountId = resolveWhatsAppAccountId({
+    requestedAccountId: args.input.accountId,
+    previousConnection,
+    agentId,
+  })
   const forceFreshLogin =
     args.input.force === true ||
     (previousConnection?.connected === false &&
@@ -249,18 +353,27 @@ export async function startConsumerAgentWhatsAppLogin(args: {
     }
   }
 
-  await upsertConsumerAgentSetting({
+  await persistWhatsAppConnection({
     supabase: args.supabase,
     userId: args.userId,
     userEmail: args.userEmail,
     userMetadata: args.userMetadata,
-    input: {
-      agentId,
-      isActive: true,
-      workspaceRef: setting.workspaceRef,
-      toolOverrides: withWhatsAppConnection(setting, connection),
-    },
+    setting,
+    agentId,
+    connection,
   })
+
+  if (connection.connected) {
+    await disconnectOtherAgentWhatsAppConnectionsForAccount({
+      supabase: args.supabase,
+      userId: args.userId,
+      userEmail: args.userEmail,
+      userMetadata: args.userMetadata,
+      accountId,
+      excludeAgentId: agentId,
+      reason: `Disconnected because WhatsApp account "${accountId}" is now bound to "${agentId}".`,
+    }).catch(() => {})
+  }
 
   return {
     whatsapp: connection,
@@ -287,7 +400,11 @@ export async function waitConsumerAgentWhatsAppLogin(args: {
   })
 
   const previousConnection = parseWhatsAppConnection(setting)
-  const accountId = normalizeAccountId(args.input.accountId, previousConnection?.accountId ?? "default")
+  const accountId = resolveWhatsAppAccountId({
+    requestedAccountId: args.input.accountId,
+    previousConnection,
+    agentId,
+  })
 
   let login
   try {
@@ -329,18 +446,27 @@ export async function waitConsumerAgentWhatsAppLogin(args: {
     }
   }
 
-  await upsertConsumerAgentSetting({
+  await persistWhatsAppConnection({
     supabase: args.supabase,
     userId: args.userId,
     userEmail: args.userEmail,
     userMetadata: args.userMetadata,
-    input: {
-      agentId,
-      isActive: true,
-      workspaceRef: setting.workspaceRef,
-      toolOverrides: withWhatsAppConnection(setting, connection),
-    },
+    setting,
+    agentId,
+    connection,
   })
+
+  if (connection.connected) {
+    await disconnectOtherAgentWhatsAppConnectionsForAccount({
+      supabase: args.supabase,
+      userId: args.userId,
+      userEmail: args.userEmail,
+      userMetadata: args.userMetadata,
+      accountId,
+      excludeAgentId: agentId,
+      reason: `Disconnected because WhatsApp account "${accountId}" is now bound to "${agentId}".`,
+    }).catch(() => {})
+  }
 
   return {
     whatsapp: connection,
@@ -367,41 +493,71 @@ export async function disconnectConsumerAgentWhatsApp(args: {
   })
 
   const previousConnection = parseWhatsAppConnection(setting)
-  const accountId = normalizeAccountId(args.input.accountId, previousConnection?.accountId ?? "default")
+  const accountId = resolveWhatsAppAccountId({
+    requestedAccountId: args.input.accountId,
+    previousConnection,
+    agentId,
+  })
 
+  let disconnectFailureMessage: string | null = null
+  let localCleanupApplied = false
   try {
     await logoutWhatsAppChannelAccount({ accountId })
   } catch (error) {
-    if (error instanceof OpenClawWhatsAppSyncError) {
-      throw new ConsumerAgentWhatsAppError(error.message, error.statusCode)
+    if (error instanceof OpenClawWhatsAppSyncError || error instanceof OpenClawWhatsAppBridgeError) {
+      disconnectFailureMessage = error.message
+    } else if (error instanceof Error) {
+      disconnectFailureMessage = error.message
+    } else {
+      disconnectFailureMessage = "unknown WhatsApp disconnect failure"
     }
+  }
 
-    throw error
+  if (disconnectFailureMessage) {
+    await removeBridgeWhatsAppAccount({ accountId })
+      .then((result) => {
+        localCleanupApplied = result.removed
+      })
+      .catch(() => {})
   }
 
   const now = new Date().toISOString()
+  const disconnectDetail = normalizeText(disconnectFailureMessage).slice(0, 320)
+  const disconnectedMessage = disconnectDetail
+    ? localCleanupApplied
+      ? `Disconnected locally from WhatsApp. Remote logout failed: ${disconnectDetail}`
+      : `Disconnected in AAAS-2, but remote logout could not be confirmed: ${disconnectDetail}`
+    : "Disconnected from WhatsApp."
+
   const connection: ConsumerWhatsAppConnection = {
     connected: false,
     accountId,
     linkedIdentity: null,
-    lastLoginMessage: "Disconnected from WhatsApp.",
+    lastLoginMessage: disconnectedMessage,
     connectedAt: null,
     disconnectedAt: now,
     lastVerifiedAt: null,
   }
 
-  await upsertConsumerAgentSetting({
+  await persistWhatsAppConnection({
     supabase: args.supabase,
     userId: args.userId,
     userEmail: args.userEmail,
     userMetadata: args.userMetadata,
-    input: {
-      agentId,
-      isActive: true,
-      workspaceRef: setting.workspaceRef,
-      toolOverrides: withWhatsAppConnection(setting, connection),
-    },
+    setting,
+    agentId,
+    connection,
   })
+
+  await disconnectOtherAgentWhatsAppConnectionsForAccount({
+    supabase: args.supabase,
+    userId: args.userId,
+    userEmail: args.userEmail,
+    userMetadata: args.userMetadata,
+    accountId,
+    excludeAgentId: agentId,
+    reason: `Disconnected because WhatsApp account "${accountId}" was disconnected.`,
+  }).catch(() => {})
 
   return {
     whatsapp: connection,

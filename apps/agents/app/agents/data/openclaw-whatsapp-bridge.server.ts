@@ -574,12 +574,22 @@ export async function removeBridgeWhatsAppAccount(args: { accountId: string }): 
   const channels = asRecord(config.channels)
   const whatsapp = asRecord(channels.whatsapp)
   const accounts = asRecord(whatsapp.accounts)
+  const bindings = Array.isArray(config.bindings) ? config.bindings : []
+  const nextBindings = bindings.filter((binding) => {
+    const record = asRecord(binding)
+    if (asString(record.type) !== "route") return true
+    const match = asRecord(record.match)
+    if (asString(match.channel) !== "whatsapp") return true
+    return asString(match.accountId) !== accountId
+  })
+  const accountRemoved = accountId in accounts
+  const bindingsRemoved = nextBindings.length !== bindings.length
 
-  if (!(accountId in accounts)) {
+  if (!accountRemoved && !bindingsRemoved) {
     return { removed: false }
   }
 
-  const nextAccounts = removeRecordKey(accounts, accountId)
+  const nextAccounts = accountRemoved ? removeRecordKey(accounts, accountId) : accounts
   const nextDefaultAccountId = resolveNextDefaultAccountId({
     currentDefaultAccountId: asString(whatsapp.defaultAccount),
     removedAccountId: accountId,
@@ -606,10 +616,11 @@ export async function removeBridgeWhatsAppAccount(args: { accountId: string }): 
       ...channels,
       whatsapp: nextWhatsApp,
     },
+    bindings: nextBindings,
   }
 
   await writeOpenClawConfig(configPath, nextConfig)
-  return { removed: true }
+  return { removed: accountRemoved || bindingsRemoved }
 }
 
 export async function bridgeStartWhatsAppLogin(args: {
@@ -663,19 +674,29 @@ export async function bridgeWaitWhatsAppLogin(args: {
 
 export async function bridgeLogoutWhatsApp(args: { accountId: string }): Promise<{ cleared: boolean }> {
   const accountId = normalizeAccountId(args.accountId)
-  const payload = asRecord(
-    await callGatewayMethod({
-      method: "channels.logout",
-      params: {
-        channel: "whatsapp",
-        accountId,
-      },
-    }),
-  )
+  let payload: Record<string, unknown> = {}
+  let gatewayFailure: unknown = null
 
-  await removeBridgeWhatsAppAccount({ accountId }).catch(() => {})
+  try {
+    payload = asRecord(
+      await callGatewayMethod({
+        method: "channels.logout",
+        params: {
+          channel: "whatsapp",
+          accountId,
+        },
+      }),
+    )
+  } catch (error) {
+    gatewayFailure = error
+  }
+
+  const cleanupResult = await removeBridgeWhatsAppAccount({ accountId }).catch(() => ({ removed: false }))
+  if (gatewayFailure && !cleanupResult.removed) {
+    throw gatewayFailure
+  }
 
   return {
-    cleared: payload.cleared !== false,
+    cleared: gatewayFailure ? false : payload.cleared !== false,
   }
 }

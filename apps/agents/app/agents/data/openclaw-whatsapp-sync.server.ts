@@ -9,6 +9,7 @@ import path from "node:path"
 import {
   OpenClawWhatsAppBridgeError,
   bridgeLogoutWhatsApp,
+  removeBridgeWhatsAppAccount,
   bridgeStartWhatsAppLogin,
   bridgeWaitWhatsAppLogin,
   syncBridgeWhatsAppAccount,
@@ -557,6 +558,19 @@ export async function logoutWhatsAppChannelAccount(args: { accountId: string }):
       failures.push(`local-bridge: ${truncateErrorDetail(error.message)}`)
     } else {
       failures.push(`local-bridge: ${truncateErrorDetail(toExecErrorMessage(error))}`)
+    }
+  }
+
+  try {
+    const cleanup = await removeBridgeWhatsAppAccount({ accountId: args.accountId })
+    if (cleanup.removed) {
+      return
+    }
+  } catch (error) {
+    if (error instanceof OpenClawWhatsAppBridgeError) {
+      failures.push(`local-cleanup: ${truncateErrorDetail(error.message)}`)
+    } else {
+      failures.push(`local-cleanup: ${truncateErrorDetail(toExecErrorMessage(error))}`)
     }
   }
 
