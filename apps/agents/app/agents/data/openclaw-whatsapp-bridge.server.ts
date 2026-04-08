@@ -13,6 +13,8 @@ const OPENCLAW_GATEWAY_HOST_ENV = "OPENCLAW_GATEWAY_HOST"
 const OPENCLAW_GATEWAY_PORT_ENV = "OPENCLAW_GATEWAY_PORT"
 const OPENCLAW_GATEWAY_TOKEN_ENV = "OPENCLAW_GATEWAY_TOKEN"
 const OPENCLAW_GATEWAY_TIMEOUT_MS = 45_000
+const DEFAULT_OPENCLAW_CONFIG_PATH = "/var/lib/openclaw/openclaw.json"
+const FALLBACK_TMP_OPENCLAW_CONFIG_PATH = "/tmp/.openclaw/openclaw.json"
 
 type OpenClawConfig = Record<string, unknown>
 
@@ -102,20 +104,16 @@ async function fileExists(candidatePath: string): Promise<boolean> {
 
 async function resolveOpenClawConfigPath(): Promise<string> {
   const explicitConfigPath = normalizePathInput(process.env[OPENCLAW_CONFIG_PATH_ENV])
-  if (explicitConfigPath) {
-    return explicitConfigPath
-  }
-
   const explicitHome = normalizePathInput(process.env[OPENCLAW_HOME_ENV])
-  if (explicitHome) {
-    return path.join(explicitHome, "openclaw.json")
-  }
-
   const runtimeHome = normalizePathInput(homedir())
   const candidates = [
+    explicitConfigPath,
+    explicitHome ? path.join(explicitHome, "openclaw.json") : "",
     runtimeHome ? path.join(runtimeHome, ".openclaw", "openclaw.json") : "",
+    DEFAULT_OPENCLAW_CONFIG_PATH,
     "/home/node/.openclaw/openclaw.json",
     "/root/.openclaw/openclaw.json",
+    FALLBACK_TMP_OPENCLAW_CONFIG_PATH,
   ].filter(Boolean)
 
   for (const candidate of candidates) {
@@ -124,7 +122,18 @@ async function resolveOpenClawConfigPath(): Promise<string> {
     }
   }
 
-  return candidates[0] ?? "/root/.openclaw/openclaw.json"
+  for (const candidate of candidates) {
+    try {
+      const parent = path.dirname(candidate)
+      await mkdir(parent, { recursive: true })
+      await access(parent, fsConstants.W_OK)
+      return candidate
+    } catch {
+      // keep probing writable candidates
+    }
+  }
+
+  return FALLBACK_TMP_OPENCLAW_CONFIG_PATH
 }
 
 async function readOpenClawConfig(configPath: string): Promise<OpenClawConfig> {
@@ -228,7 +237,7 @@ async function callGatewayMethod(args: {
 
   if (gatewayUrls.length === 0) {
     throw new OpenClawWhatsAppBridgeError(
-      `Unable to resolve gateway URL. Set ${OPENCLAW_GATEWAY_WS_URL_ENV} or ${OPENCLAW_GATEWAY_URL_ENV}.`,
+      `Unable to resolve gateway URL. Configure ${OPENCLAW_GATEWAY_WS_URL_ENV} or ${OPENCLAW_GATEWAY_URL_ENV}, or run the gateway on ws://127.0.0.1:18789/ws.`,
       500,
     )
   }

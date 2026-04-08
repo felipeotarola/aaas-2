@@ -19,6 +19,7 @@ const OPENCLAW_CONFIG_BRIDGE_URL_ENV = "OPENCLAW_CONFIG_BRIDGE_URL"
 const OPENCLAW_CONFIG_BRIDGE_TOKEN_ENV = "OPENCLAW_CONFIG_BRIDGE_TOKEN"
 const OPENCLAW_AGENT_BRIDGE_TOKEN_ENV = "OPENCLAW_AGENT_BRIDGE_TOKEN"
 const DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL = "http://127.0.0.1:4311/api/openclaw/config"
+const DEFAULT_HOSTED_CONFIG_BRIDGE_URL = "https://agents.felipeotarola.com/api/openclaw/config"
 const OPENCLAW_COMMAND_MAX_BUFFER_BYTES = 1 * 1024 * 1024
 const OPENCLAW_COMMAND_TIMEOUT_MS = 45_000
 const OPENCLAW_LOGIN_WAIT_TIMEOUT_MS = 140_000
@@ -200,8 +201,9 @@ function getOpenClawConfigBridgeCandidates(): string[] {
 
   if (explicitBridgeUrl) candidates.push(explicitBridgeUrl)
   if (derivedBridgeUrl) candidates.push(derivedBridgeUrl)
-  if (!explicitBridgeUrl && !shouldDisableBridgeFallback()) {
+  if (!shouldDisableBridgeFallback()) {
     candidates.push(DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL)
+    candidates.push(DEFAULT_HOSTED_CONFIG_BRIDGE_URL)
   }
 
   return Array.from(new Set(candidates))
@@ -265,7 +267,7 @@ function withHostedRuntimeHint(message: string, failures: string[]): string {
     return message
   }
 
-  return `${message} This server cannot execute the openclaw binary. Configure ${OPENCLAW_CONFIG_BRIDGE_URL_ENV} to a bridge that supports WhatsApp login endpoints, or set ${OPENCLAW_EXECUTABLE_ENV} to an installed absolute path.`
+  return `${message} This server cannot execute the openclaw binary. Configure ${OPENCLAW_CONFIG_BRIDGE_URL_ENV} to a bridge that supports WhatsApp login endpoints. ${OPENCLAW_EXECUTABLE_ENV} is optional when bridge or local-gateway paths are available.`
 }
 
 async function tryBridgeCall(args: {

@@ -45,6 +45,7 @@ type OpenClawPaths = {
 
 const AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i
 const DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL = "http://127.0.0.1:4311/api/openclaw/config"
+const DEFAULT_HOSTED_CONFIG_BRIDGE_URL = "https://agents.felipeotarola.com/api/openclaw/config"
 const OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS = 1_500
 
 export class OpenClawAgentsError extends Error {
@@ -74,7 +75,7 @@ function getOpenClawConfigBridgeCandidates(): string[] {
   const explicitBridgeUrl = normalizePathInput(process.env.OPENCLAW_CONFIG_BRIDGE_URL)
   if (explicitBridgeUrl) return [explicitBridgeUrl]
   if (shouldDisableBridgeFallback()) return []
-  return [DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL]
+  return [DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL, DEFAULT_HOSTED_CONFIG_BRIDGE_URL]
 }
 
 async function readOpenClawConfigFromBridge(): Promise<OpenClawConfig | null> {

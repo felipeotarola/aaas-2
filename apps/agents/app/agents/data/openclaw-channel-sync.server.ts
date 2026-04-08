@@ -12,6 +12,7 @@ const OPENCLAW_EXECUTABLE_ENV = "OPENCLAW_CLI_PATH"
 const OPENCLAW_CONFIG_BRIDGE_TOKEN_ENV = "OPENCLAW_CONFIG_BRIDGE_TOKEN"
 const OPENCLAW_AGENT_BRIDGE_TOKEN_ENV = "OPENCLAW_AGENT_BRIDGE_TOKEN"
 const DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL = "http://127.0.0.1:4311/api/openclaw/config"
+const DEFAULT_HOSTED_CONFIG_BRIDGE_URL = "https://agents.felipeotarola.com/api/openclaw/config"
 const OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS = 3_000
 
 type ExecCommandResult = {
@@ -149,8 +150,10 @@ function getOpenClawConfigPathCandidates(): string[] {
     explicitConfigPath,
     explicitHome ? path.join(explicitHome, "openclaw.json") : "",
     runtimeHome ? path.join(runtimeHome, ".openclaw", "openclaw.json") : "",
+    "/var/lib/openclaw/openclaw.json",
     "/home/node/.openclaw/openclaw.json",
     "/root/.openclaw/openclaw.json",
+    "/tmp/.openclaw/openclaw.json",
   ].filter(Boolean)
 
   return Array.from(new Set(candidates))
@@ -185,8 +188,9 @@ function getOpenClawConfigBridgeCandidates(): string[] {
 
   if (explicitBridgeUrl) candidates.push(explicitBridgeUrl)
   if (derivedBridgeUrl) candidates.push(derivedBridgeUrl)
-  if (!explicitBridgeUrl && !shouldDisableBridgeFallback()) {
+  if (!shouldDisableBridgeFallback()) {
     candidates.push(DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL)
+    candidates.push(DEFAULT_HOSTED_CONFIG_BRIDGE_URL)
   }
 
   return Array.from(new Set(candidates))
@@ -347,7 +351,7 @@ async function syncTelegramChannelViaConfigFile(args: { accountId: string; botTo
   }
 
   throw new OpenClawChannelSyncError(
-    `Telegram token was verified, but config-file sync failed (${failures.join(" | ")}). Configure OPENCLAW_CONFIG_BRIDGE_URL to a writable OpenClaw bridge endpoint.`,
+    `Telegram token was verified, but config-file sync failed (${failures.join(" | ")}). Configure OPENCLAW_CONFIG_BRIDGE_URL to a writable OpenClaw bridge endpoint or ensure a writable config path exists (for example /var/lib/openclaw/openclaw.json).`,
     502,
   )
 }

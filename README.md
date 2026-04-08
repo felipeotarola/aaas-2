@@ -20,16 +20,21 @@ Set:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
-For OpenClaw-backed agent discovery in both apps (especially in production), also set at least one of:
+For OpenClaw-backed discovery/chat, this repo now defaults to a single-VPS-friendly setup and most OpenClaw env keys are optional.
 
-- `OPENCLAW_HOME` (e.g. `/home/node/.openclaw`)
-- `OPENCLAW_CONFIG_PATH` + `OPENCLAW_AGENTS_ROOT`
-- `OPENCLAW_CONFIG_BRIDGE_URL` (fallback HTTP bridge, default probe is `http://127.0.0.1:4311/api/openclaw/config`)
-- `OPENCLAW_CLI_PATH` (absolute path to `openclaw` binary; required for runtime chat preview if `openclaw` is not on PATH)
-- `OPENCLAW_AGENT_BRIDGE_URL` (optional runtime chat bridge URL, e.g. `https://api.felipeotarola.com/api/openclaw/assistant-chat/{agentId}` for hosted platforms like Vercel)
-- `OPENCLAW_AGENT_BRIDGE_TOKEN` (optional bearer token for chat bridge authorization)
-- `OPENCLAW_CONFIG_BRIDGE_TOKEN` (optional bearer token expected by config bridge routes)
-- `OPENCLAW_GATEWAY_WS_URL` or `OPENCLAW_GATEWAY_URL` + `OPENCLAW_GATEWAY_TOKEN` (used by WhatsApp config-bridge QR login routes to call gateway RPC without local CLI)
+Recommended minimal setup:
+
+- `OPENCLAW_GATEWAY_TOKEN` (**required** for WhatsApp gateway auth)
+- `OPENCLAW_CONFIG_BRIDGE_URL` (optional override; if unset the app probes:
+  `http://127.0.0.1:4311/api/openclaw/config`, then
+  `https://agents.felipeotarola.com/api/openclaw/config`)
+
+Optional overrides (only if your deployment differs from defaults):
+
+- `OPENCLAW_GATEWAY_WS_URL` / `OPENCLAW_GATEWAY_URL` (otherwise defaults resolve to local gateway `ws://127.0.0.1:18789/ws`)
+- `OPENCLAW_CONFIG_PATH` (otherwise writable paths are probed, including `/var/lib/openclaw/openclaw.json` and `/tmp/.openclaw/openclaw.json`)
+- `OPENCLAW_CLI_PATH` (CLI path override; not required when bridge/local gateway paths work)
+- `OPENCLAW_AGENT_BRIDGE_URL`, `OPENCLAW_AGENT_BRIDGE_TOKEN`, `OPENCLAW_CONFIG_BRIDGE_TOKEN`
 
 ### 2) Apply DB migration
 
