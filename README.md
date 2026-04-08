@@ -28,6 +28,8 @@ For OpenClaw-backed agent discovery in both apps (especially in production), als
 - `OPENCLAW_CLI_PATH` (absolute path to `openclaw` binary; required for runtime chat preview if `openclaw` is not on PATH)
 - `OPENCLAW_AGENT_BRIDGE_URL` (optional runtime chat bridge URL, e.g. `https://api.felipeotarola.com/api/openclaw/assistant-chat/{agentId}` for hosted platforms like Vercel)
 - `OPENCLAW_AGENT_BRIDGE_TOKEN` (optional bearer token for chat bridge authorization)
+- `OPENCLAW_CONFIG_BRIDGE_TOKEN` (optional bearer token expected by config bridge routes)
+- `OPENCLAW_GATEWAY_WS_URL` or `OPENCLAW_GATEWAY_URL` + `OPENCLAW_GATEWAY_TOKEN` (used by WhatsApp config-bridge QR login routes to call gateway RPC without local CLI)
 
 ### 2) Apply DB migration
 
