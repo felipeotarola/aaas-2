@@ -9,6 +9,10 @@ import path from "node:path"
 const OPENCLAW_CHANNEL_COMMAND_TIMEOUT_MS = 30_000
 const OPENCLAW_CHANNEL_COMMAND_MAX_BUFFER_BYTES = 1 * 1024 * 1024
 const OPENCLAW_EXECUTABLE_ENV = "OPENCLAW_CLI_PATH"
+const OPENCLAW_CONFIG_BRIDGE_TOKEN_ENV = "OPENCLAW_CONFIG_BRIDGE_TOKEN"
+const OPENCLAW_AGENT_BRIDGE_TOKEN_ENV = "OPENCLAW_AGENT_BRIDGE_TOKEN"
+const DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL = "http://127.0.0.1:4311/api/openclaw/config"
+const OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS = 3_000
 
 type ExecCommandResult = {
   stdout: string
@@ -22,6 +26,10 @@ type ExecCommandError = Error & {
 }
 
 type OpenClawConfig = Record<string, unknown>
+type BridgeAttemptOutcome = {
+  synced: boolean
+  failures: string[]
+}
 
 export class OpenClawChannelSyncError extends Error {
   constructor(
@@ -148,6 +156,129 @@ function getOpenClawConfigPathCandidates(): string[] {
   return Array.from(new Set(candidates))
 }
 
+function deriveConfigBridgeUrlFromAgentBridge(raw: string | undefined): string {
+  const normalized = normalizePathInput(raw)
+  if (!normalized) return ""
+
+  const untemplated = normalized.replace(/\{agentId\}/gi, "assistant-agent")
+
+  try {
+    const url = new URL(untemplated)
+    url.pathname = "/api/openclaw/config"
+    url.search = ""
+    url.hash = ""
+    return url.toString()
+  } catch {
+    return ""
+  }
+}
+
+function shouldDisableBridgeFallback(): boolean {
+  const raw = normalizePathInput(process.env.OPENCLAW_DISABLE_CONFIG_BRIDGE_FALLBACK).toLowerCase()
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
+}
+
+function getOpenClawConfigBridgeCandidates(): string[] {
+  const explicitBridgeUrl = normalizePathInput(process.env.OPENCLAW_CONFIG_BRIDGE_URL)
+  const derivedBridgeUrl = deriveConfigBridgeUrlFromAgentBridge(process.env.OPENCLAW_AGENT_BRIDGE_URL)
+  const candidates: string[] = []
+
+  if (explicitBridgeUrl) candidates.push(explicitBridgeUrl)
+  if (derivedBridgeUrl) candidates.push(derivedBridgeUrl)
+  if (!explicitBridgeUrl && !shouldDisableBridgeFallback()) {
+    candidates.push(DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL)
+  }
+
+  return Array.from(new Set(candidates))
+}
+
+function buildBridgeTelegramSyncEndpoints(bridgeUrl: string): string[] {
+  try {
+    const url = new URL(bridgeUrl)
+    const basePath = url.pathname.replace(/\/+$/, "") || "/"
+    const endpoints = ["/telegram/accounts", "/channels/telegram/accounts"]
+
+    return endpoints.map((suffix) => {
+      const endpoint = new URL(bridgeUrl)
+      endpoint.pathname = `${basePath}${suffix}`
+      endpoint.search = ""
+      endpoint.hash = ""
+      return endpoint.toString()
+    })
+  } catch {
+    return []
+  }
+}
+
+function getBridgeBearerToken(): string {
+  return (
+    normalizePathInput(process.env[OPENCLAW_CONFIG_BRIDGE_TOKEN_ENV]) ||
+    normalizePathInput(process.env[OPENCLAW_AGENT_BRIDGE_TOKEN_ENV])
+  )
+}
+
+function extractBridgeError(payload: unknown): string | null {
+  const parsed = asRecord(payload)
+
+  const direct =
+    (typeof parsed.error === "string" ? normalizeText(parsed.error) : "") ||
+    (typeof parsed.message === "string" ? normalizeText(parsed.message) : "")
+  if (direct) return direct
+
+  const nestedError = asRecord(parsed.error)
+  const nestedMessage = typeof nestedError.message === "string" ? normalizeText(nestedError.message) : ""
+  return nestedMessage || null
+}
+
+async function syncTelegramChannelViaBridge(args: { accountId: string; botToken: string }): Promise<BridgeAttemptOutcome> {
+  const bridgeUrls = getOpenClawConfigBridgeCandidates()
+  if (bridgeUrls.length === 0) {
+    return { synced: false, failures: [] }
+  }
+
+  const failures: string[] = []
+  const bearerToken = getBridgeBearerToken()
+
+  for (const bridgeUrl of bridgeUrls) {
+    const endpoints = buildBridgeTelegramSyncEndpoints(bridgeUrl)
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            ...(bearerToken ? { authorization: `Bearer ${bearerToken}` } : {}),
+          },
+          body: JSON.stringify({
+            accountId: args.accountId,
+            botToken: args.botToken,
+          }),
+          signal: AbortSignal.timeout(OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS),
+        })
+
+        const payload = (await response.json().catch(() => null)) as unknown
+        if (response.ok) {
+          return { synced: true, failures }
+        }
+
+        if (response.status === 404) {
+          continue
+        }
+
+        const detail = extractBridgeError(payload) ?? `HTTP ${response.status}`
+        failures.push(`${endpoint}: ${truncateErrorDetail(detail.replaceAll(args.botToken, "<redacted-token>"))}`)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "unknown bridge request failure"
+        failures.push(`${endpoint}: ${truncateErrorDetail(detail.replaceAll(args.botToken, "<redacted-token>"))}`)
+      }
+    }
+  }
+
+  return { synced: false, failures }
+}
+
 async function readOpenClawConfig(configPath: string): Promise<OpenClawConfig> {
   try {
     const raw = await readFile(configPath, "utf8")
@@ -216,7 +347,7 @@ async function syncTelegramChannelViaConfigFile(args: { accountId: string; botTo
   }
 
   throw new OpenClawChannelSyncError(
-    `Telegram token was verified, but config-file sync failed (${failures.join(" | ")}).`,
+    `Telegram token was verified, but config-file sync failed (${failures.join(" | ")}). Configure OPENCLAW_CONFIG_BRIDGE_URL to a writable OpenClaw bridge endpoint.`,
     502,
   )
 }
@@ -250,6 +381,14 @@ export async function syncTelegramChannelAccount(args: { accountId: string; botT
         failures.push(`${executable}: ${truncateErrorDetail(toExecErrorMessage(error, args.botToken))}`)
       }
     }
+  }
+
+  const bridgeSync = await syncTelegramChannelViaBridge(args)
+  if (bridgeSync.synced) {
+    return
+  }
+  if (bridgeSync.failures.length > 0) {
+    failures.push(...bridgeSync.failures)
   }
 
   if (executableCandidates.length === 0 || (codes.size > 0 && Array.from(codes).every((code) => code === "ENOENT"))) {
