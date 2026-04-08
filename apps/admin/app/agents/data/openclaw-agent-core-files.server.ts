@@ -8,6 +8,8 @@ import { OpenClawAgentsError, listOpenClawAgents } from "./openclaw-agents.serve
 
 const MAX_FILE_BYTES = 24_000
 const AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i
+const DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL = "http://127.0.0.1:4311/api/openclaw/config"
+const OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS = 1_500
 
 type CoreFileDescriptor = {
   kind: Exclude<AgentCoreFileKind, "MEMORY">
@@ -41,6 +43,77 @@ function toWorkspacePath(raw: string): string | null {
   const trimmed = raw.trim()
   if (!trimmed || !path.isAbsolute(trimmed)) return null
   return path.resolve(trimmed)
+}
+
+function normalizePathInput(raw: string | undefined): string {
+  if (!raw) return ""
+  return raw.trim().replace(/^['"]|['"]$/g, "")
+}
+
+function deriveConfigBridgeUrlFromAgentBridge(raw: string | undefined): string {
+  const normalized = normalizePathInput(raw)
+  if (!normalized) return ""
+
+  const untemplated = normalized.replace(/\{agentId\}/gi, "assistant-agent")
+
+  try {
+    const url = new URL(untemplated)
+    url.pathname = "/api/openclaw/config"
+    url.search = ""
+    url.hash = ""
+    return url.toString()
+  } catch {
+    return ""
+  }
+}
+
+function getOpenClawConfigBridgeCandidates(): string[] {
+  const explicitBridgeUrl = normalizePathInput(process.env.OPENCLAW_CONFIG_BRIDGE_URL)
+  const derivedBridgeUrl = deriveConfigBridgeUrlFromAgentBridge(process.env.OPENCLAW_AGENT_BRIDGE_URL)
+
+  const candidates: string[] = []
+  if (explicitBridgeUrl) candidates.push(explicitBridgeUrl)
+  if (derivedBridgeUrl) candidates.push(derivedBridgeUrl)
+  if (!explicitBridgeUrl) candidates.push(DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL)
+
+  return Array.from(new Set(candidates))
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+async function readOpenClawAgentCoreFilesFromBridge(agentId: string): Promise<GetOpenClawAgentCoreFilesResponse | null> {
+  const bridgeCandidates = getOpenClawConfigBridgeCandidates()
+
+  for (const bridgeUrl of bridgeCandidates) {
+    try {
+      const url = new URL(bridgeUrl)
+      const basePath = url.pathname.replace(/\/+$/, "") || "/"
+      url.pathname = `${basePath}/agents/${encodeURIComponent(agentId)}/core-files`
+      url.search = ""
+      url.hash = ""
+
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        cache: "no-store",
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(OPENCLAW_CONFIG_BRIDGE_TIMEOUT_MS),
+      })
+
+      if (!response.ok) continue
+
+      const payload = (await response.json()) as unknown
+      if (!isRecord(payload)) continue
+      if (!Array.isArray(payload.coreFiles)) continue
+
+      return payload as GetOpenClawAgentCoreFilesResponse
+    } catch {
+      // optional path; keep probing
+    }
+  }
+
+  return null
 }
 
 function buildWorkspaceCandidates(agentId: string, configuredWorkspacePath: string | null): string[] {
@@ -222,6 +295,14 @@ export async function getOpenClawAgentCoreFiles(rawAgentId: string): Promise<Get
   const agent = payload.agents.find((value) => value.id === agentId)
   if (!agent) {
     throw new OpenClawAgentsError(`Agent '${agentId}' was not found.`, 404)
+  }
+
+  const bridgePayload = await readOpenClawAgentCoreFilesFromBridge(agentId)
+  if (bridgePayload) {
+    return {
+      ...bridgePayload,
+      agent: bridgePayload.agent ?? agent,
+    }
   }
 
   const configuredWorkspacePath = toWorkspacePath(agent.workspace)
