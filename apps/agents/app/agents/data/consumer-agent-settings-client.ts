@@ -3,11 +3,17 @@ import type {
   ChatWithConsumerAgentResponse,
   ConnectConsumerAgentTelegramRequest,
   ConnectConsumerAgentTelegramResponse,
+  DisconnectConsumerAgentWhatsAppRequest,
+  DisconnectConsumerAgentWhatsAppResponse,
   DisconnectConsumerAgentTelegramRequest,
   DisconnectConsumerAgentTelegramResponse,
   ListConsumerAgentSettingsResponse,
+  StartConsumerAgentWhatsAppLoginRequest,
+  StartConsumerAgentWhatsAppLoginResponse,
   UpsertConsumerAgentSettingRequest,
   UpsertConsumerAgentSettingResponse,
+  WaitConsumerAgentWhatsAppLoginRequest,
+  WaitConsumerAgentWhatsAppLoginResponse,
 } from "./contracts"
 
 export type LaunchConsumerAgentResponse = {
@@ -100,4 +106,46 @@ export async function disconnectConsumerAgentTelegram(
   })
 
   return parseResponse<DisconnectConsumerAgentTelegramResponse>(response)
+}
+
+export async function startConsumerAgentWhatsAppLogin(
+  input: StartConsumerAgentWhatsAppLoginRequest,
+): Promise<StartConsumerAgentWhatsAppLoginResponse> {
+  const response = await fetch("/api/consumer/agents/whatsapp", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  })
+
+  return parseResponse<StartConsumerAgentWhatsAppLoginResponse>(response)
+}
+
+export async function waitConsumerAgentWhatsAppLogin(
+  input: WaitConsumerAgentWhatsAppLoginRequest,
+): Promise<WaitConsumerAgentWhatsAppLoginResponse> {
+  const response = await fetch("/api/consumer/agents/whatsapp", {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  })
+
+  return parseResponse<WaitConsumerAgentWhatsAppLoginResponse>(response)
+}
+
+export async function disconnectConsumerAgentWhatsApp(
+  input: DisconnectConsumerAgentWhatsAppRequest,
+): Promise<DisconnectConsumerAgentWhatsAppResponse> {
+  const response = await fetch("/api/consumer/agents/whatsapp", {
+    method: "DELETE",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  })
+
+  return parseResponse<DisconnectConsumerAgentWhatsAppResponse>(response)
 }

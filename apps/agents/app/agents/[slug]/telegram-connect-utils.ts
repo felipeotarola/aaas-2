@@ -1,4 +1,9 @@
-import type { ConsumerAgentSetting, ConsumerTelegramConnection, TelegramDmPolicy } from "@/app/agents/data/contracts"
+import type {
+  ConsumerAgentSetting,
+  ConsumerTelegramConnection,
+  ConsumerWhatsAppConnection,
+  TelegramDmPolicy,
+} from "@/app/agents/data/contracts"
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -76,5 +81,25 @@ export function parseTelegramConnection(setting: ConsumerAgentSetting | null): C
     connectedAt: asString(telegram.connectedAt),
     disconnectedAt: asString(telegram.disconnectedAt),
     lastVerifiedAt: asString(telegram.lastVerifiedAt),
+  }
+}
+
+export function parseWhatsAppConnection(setting: ConsumerAgentSetting | null): ConsumerWhatsAppConnection | null {
+  if (!setting) return null
+
+  const channels = asRecord(setting.toolOverrides.channels)
+  const whatsapp = asRecord(channels.whatsapp)
+  if (Object.keys(whatsapp).length === 0) {
+    return null
+  }
+
+  return {
+    connected: asBoolean(whatsapp.connected, false),
+    accountId: asString(whatsapp.accountId) ?? "default",
+    linkedIdentity: asString(whatsapp.linkedIdentity),
+    lastLoginMessage: asString(whatsapp.lastLoginMessage),
+    connectedAt: asString(whatsapp.connectedAt),
+    disconnectedAt: asString(whatsapp.disconnectedAt),
+    lastVerifiedAt: asString(whatsapp.lastVerifiedAt),
   }
 }

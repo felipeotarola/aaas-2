@@ -44,6 +44,16 @@ export type ConsumerTelegramConnection = {
   lastVerifiedAt: string | null
 }
 
+export type ConsumerWhatsAppConnection = {
+  connected: boolean
+  accountId: string
+  linkedIdentity: string | null
+  lastLoginMessage: string | null
+  connectedAt: string | null
+  disconnectedAt: string | null
+  lastVerifiedAt: string | null
+}
+
 export type ListConsumerAgentSettingsResponse = {
   settings: ConsumerAgentSetting[]
 }
@@ -96,4 +106,42 @@ export type DisconnectConsumerAgentTelegramRequest = {
 
 export type DisconnectConsumerAgentTelegramResponse = {
   telegram: ConsumerTelegramConnection
+}
+
+export type StartConsumerAgentWhatsAppLoginRequest = {
+  agentId: string
+  accountId?: string
+  timeoutMs?: number
+  force?: boolean
+}
+
+export type WaitConsumerAgentWhatsAppLoginRequest = {
+  agentId: string
+  accountId?: string
+  timeoutMs?: number
+}
+
+export type DisconnectConsumerAgentWhatsAppRequest = {
+  agentId: string
+  accountId?: string
+}
+
+export type ConsumerAgentWhatsAppLoginPayload = {
+  connected: boolean
+  message: string
+  qrDataUrl: string | null
+}
+
+export type StartConsumerAgentWhatsAppLoginResponse = {
+  whatsapp: ConsumerWhatsAppConnection
+  login: ConsumerAgentWhatsAppLoginPayload
+}
+
+export type WaitConsumerAgentWhatsAppLoginResponse = {
+  whatsapp: ConsumerWhatsAppConnection
+  login: ConsumerAgentWhatsAppLoginPayload
+}
+
+export type DisconnectConsumerAgentWhatsAppResponse = {
+  whatsapp: ConsumerWhatsAppConnection
 }
