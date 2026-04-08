@@ -181,14 +181,17 @@ export async function startConsumerAgentWhatsAppLogin(args: {
   const previousConnection = parseWhatsAppConnection(setting)
   const accountId = normalizeAccountId(args.input.accountId, previousConnection?.accountId ?? "default")
 
+  let syncFailureMessage: string | null = null
   try {
     await syncWhatsAppChannelAccount({ accountId })
   } catch (error) {
     if (error instanceof OpenClawWhatsAppSyncError) {
-      throw new ConsumerAgentWhatsAppError(error.message, error.statusCode)
+      // Best effort: some deployments expose QR login via bridge APIs but do not
+      // ship the local openclaw CLI binary on the web app host.
+      syncFailureMessage = error.message
+    } else {
+      throw error
     }
-
-    throw error
   }
 
   let login
@@ -200,6 +203,13 @@ export async function startConsumerAgentWhatsAppLogin(args: {
     })
   } catch (error) {
     if (error instanceof OpenClawWhatsAppSyncError) {
+      if (syncFailureMessage) {
+        throw new ConsumerAgentWhatsAppError(
+          `${error.message} Account pre-sync also failed: ${syncFailureMessage}`,
+          error.statusCode,
+        )
+      }
+
       throw new ConsumerAgentWhatsAppError(error.message, error.statusCode)
     }
 
