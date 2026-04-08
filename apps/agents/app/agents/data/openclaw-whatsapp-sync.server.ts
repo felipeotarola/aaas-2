@@ -7,6 +7,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 
 const OPENCLAW_EXECUTABLE_ENV = "OPENCLAW_CLI_PATH"
+const OPENCLAW_CONFIG_BRIDGE_URL_ENV = "OPENCLAW_CONFIG_BRIDGE_URL"
 const OPENCLAW_CONFIG_BRIDGE_TOKEN_ENV = "OPENCLAW_CONFIG_BRIDGE_TOKEN"
 const OPENCLAW_AGENT_BRIDGE_TOKEN_ENV = "OPENCLAW_AGENT_BRIDGE_TOKEN"
 const DEFAULT_OPENCLAW_CONFIG_BRIDGE_URL = "http://127.0.0.1:4311/api/openclaw/config"
@@ -241,6 +242,24 @@ type BridgeAttemptResult = {
   failures: string[]
 }
 
+function summarizeBridgeEndpointList(endpoints: string[]): string {
+  const unique = Array.from(new Set(endpoints))
+  if (unique.length <= 2) return unique.join(", ")
+  return `${unique.slice(0, 2).join(", ")} (+${unique.length - 2} more)`
+}
+
+function hasOpenClawCliMissingFailure(failures: string[]): boolean {
+  return failures.some((entry) => entry.includes("openclaw") && entry.includes("ENOENT"))
+}
+
+function withHostedRuntimeHint(message: string, failures: string[]): string {
+  if (!hasOpenClawCliMissingFailure(failures)) {
+    return message
+  }
+
+  return `${message} This server cannot execute the openclaw binary. Configure ${OPENCLAW_CONFIG_BRIDGE_URL_ENV} to a bridge that supports WhatsApp login endpoints, or set ${OPENCLAW_EXECUTABLE_ENV} to an installed absolute path.`
+}
+
 async function tryBridgeCall(args: {
   suffixes: string[]
   body: Record<string, unknown>
@@ -252,6 +271,7 @@ async function tryBridgeCall(args: {
   }
 
   const failures: string[] = []
+  const notFoundEndpoints: string[] = []
   const bearerToken = getBridgeBearerToken()
 
   for (const bridgeUrl of bridgeUrls) {
@@ -276,6 +296,7 @@ async function tryBridgeCall(args: {
         }
 
         if (response.status === 404) {
+          notFoundEndpoints.push(endpoint)
           continue
         }
 
@@ -286,6 +307,12 @@ async function tryBridgeCall(args: {
         failures.push(`${endpoint}: ${truncateErrorDetail(detail)}`)
       }
     }
+  }
+
+  if (notFoundEndpoints.length > 0) {
+    failures.push(
+      `Bridge does not expose required WhatsApp endpoint(s): ${summarizeBridgeEndpointList(notFoundEndpoints)}`,
+    )
   }
 
   return { payload: null, failures }
@@ -324,10 +351,10 @@ export async function syncWhatsAppChannelAccount(args: { accountId: string }): P
     }
   }
 
-  throw new OpenClawWhatsAppSyncError(
+  throw new OpenClawWhatsAppSyncError(withHostedRuntimeHint(
     `Unable to sync WhatsApp channel account (${failures.join(" | ")}).`,
-    502,
-  )
+    failures,
+  ), 502)
 }
 
 export async function startWhatsAppWebLogin(args: {
@@ -390,10 +417,10 @@ export async function startWhatsAppWebLogin(args: {
     }
   }
 
-  throw new OpenClawWhatsAppSyncError(
+  throw new OpenClawWhatsAppSyncError(withHostedRuntimeHint(
     `Failed to start WhatsApp QR login (${failures.join(" | ")}). Make sure the OpenClaw gateway is running and reachable.`,
-    502,
-  )
+    failures,
+  ), 502)
 }
 
 export async function waitForWhatsAppWebLogin(args: {
@@ -452,10 +479,10 @@ export async function waitForWhatsAppWebLogin(args: {
     }
   }
 
-  throw new OpenClawWhatsAppSyncError(
+  throw new OpenClawWhatsAppSyncError(withHostedRuntimeHint(
     `Failed to confirm WhatsApp login (${failures.join(" | ")}).`,
-    502,
-  )
+    failures,
+  ), 502)
 }
 
 export async function logoutWhatsAppChannelAccount(args: { accountId: string }): Promise<void> {
@@ -482,8 +509,8 @@ export async function logoutWhatsAppChannelAccount(args: { accountId: string }):
     }
   }
 
-  throw new OpenClawWhatsAppSyncError(
+  throw new OpenClawWhatsAppSyncError(withHostedRuntimeHint(
     `Failed to disconnect WhatsApp account (${failures.join(" | ")}).`,
-    502,
-  )
+    failures,
+  ), 502)
 }
