@@ -15,6 +15,7 @@ const OPENCLAW_GATEWAY_TOKEN_ENV = "OPENCLAW_GATEWAY_TOKEN"
 const OPENCLAW_GATEWAY_TIMEOUT_MS = 45_000
 const DEFAULT_OPENCLAW_CONFIG_PATH = "/var/lib/openclaw/openclaw.json"
 const FALLBACK_TMP_OPENCLAW_CONFIG_PATH = "/tmp/.openclaw/openclaw.json"
+const AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i
 
 type OpenClawConfig = Record<string, unknown>
 
@@ -83,6 +84,19 @@ function normalizeAccountId(raw: string | undefined, fallback = "default"): stri
     .slice(0, 48)
 
   return normalized || fallback
+}
+
+function normalizeAgentId(raw: string | undefined): string {
+  const value = normalizeText(raw).toLowerCase()
+  if (!value) return ""
+
+  const slug = value
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "")
+    .slice(0, 64)
+
+  return AGENT_ID_PATTERN.test(slug) ? slug : ""
 }
 
 function normalizeTimeoutMs(raw: number | undefined, fallback: number): number {
@@ -453,6 +467,76 @@ export async function syncBridgeWhatsAppAccount(args: { accountId: string }): Pr
 
   await writeOpenClawConfig(configPath, nextConfig)
   return { accountId }
+}
+
+export async function bindBridgeWhatsAppAccountToAgent(args: {
+  accountId: string
+  agentId: string
+}): Promise<{ accountId: string; agentId: string }> {
+  const accountId = normalizeAccountId(args.accountId)
+  const agentId = normalizeAgentId(args.agentId)
+
+  if (!agentId) {
+    throw new OpenClawWhatsAppBridgeError("Invalid agent id for WhatsApp binding.", 400)
+  }
+
+  const configPath = await resolveOpenClawConfigPath()
+  const config = await readOpenClawConfig(configPath)
+
+  const channels = asRecord(config.channels)
+  const whatsapp = asRecord(channels.whatsapp)
+  const accounts = asRecord(whatsapp.accounts)
+  const existingAccount = asRecord(accounts[accountId])
+  const rawBindings = Array.isArray(config.bindings) ? config.bindings : []
+
+  const preservedBindings = rawBindings.filter((binding) => {
+    const record = asRecord(binding)
+    if (asString(record.type) !== "route") return true
+
+    const match = asRecord(record.match)
+    if (asString(match.channel) !== "whatsapp") return true
+
+    const existingAgentId = asString(record.agentId)
+    const existingAccountId = asString(match.accountId)
+    if (existingAgentId === agentId) return false
+    if (existingAccountId === accountId) return false
+
+    return true
+  })
+
+  const nextBindings = [
+    ...preservedBindings,
+    {
+      type: "route",
+      agentId,
+      match: {
+        channel: "whatsapp",
+        accountId,
+      },
+    },
+  ]
+
+  const nextConfig: OpenClawConfig = {
+    ...config,
+    channels: {
+      ...channels,
+      whatsapp: {
+        ...whatsapp,
+        enabled: true,
+        accounts: {
+          ...accounts,
+          [accountId]: {
+            ...existingAccount,
+            enabled: true,
+          },
+        },
+      },
+    },
+    bindings: nextBindings,
+  }
+
+  await writeOpenClawConfig(configPath, nextConfig)
+  return { accountId, agentId }
 }
 
 function removeRecordKey(record: Record<string, unknown>, key: string): Record<string, unknown> {

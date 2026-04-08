@@ -20,6 +20,7 @@ import {
   syncWhatsAppChannelAccount,
   waitForWhatsAppWebLogin,
 } from "./openclaw-whatsapp-sync.server"
+import { OpenClawWhatsAppBridgeError, bindBridgeWhatsAppAccountToAgent } from "./openclaw-whatsapp-bridge.server"
 
 type UserMetadata = Record<string, unknown> | null | undefined
 
@@ -236,6 +237,18 @@ export async function startConsumerAgentWhatsAppLogin(args: {
     lastVerifiedAt: login.connected ? now : previousConnection?.lastVerifiedAt ?? null,
   }
 
+  if (connection.connected) {
+    try {
+      await bindBridgeWhatsAppAccountToAgent({ accountId, agentId })
+    } catch (error) {
+      if (error instanceof OpenClawWhatsAppBridgeError) {
+        throw new ConsumerAgentWhatsAppError(`WhatsApp linked but route binding failed: ${error.message}`, error.statusCode)
+      }
+      const detail = error instanceof Error ? error.message : "unknown route-binding failure"
+      throw new ConsumerAgentWhatsAppError(`WhatsApp linked but route binding failed: ${detail}`, 502)
+    }
+  }
+
   await upsertConsumerAgentSetting({
     supabase: args.supabase,
     userId: args.userId,
@@ -302,6 +315,18 @@ export async function waitConsumerAgentWhatsAppLogin(args: {
     connectedAt: connected ? (previousConnection?.connectedAt ?? now) : previousConnection?.connectedAt ?? null,
     disconnectedAt: connected ? null : previousConnection?.disconnectedAt ?? (terminalDisconnected ? now : null),
     lastVerifiedAt: connected ? now : previousConnection?.lastVerifiedAt ?? null,
+  }
+
+  if (connection.connected) {
+    try {
+      await bindBridgeWhatsAppAccountToAgent({ accountId, agentId })
+    } catch (error) {
+      if (error instanceof OpenClawWhatsAppBridgeError) {
+        throw new ConsumerAgentWhatsAppError(`WhatsApp linked but route binding failed: ${error.message}`, error.statusCode)
+      }
+      const detail = error instanceof Error ? error.message : "unknown route-binding failure"
+      throw new ConsumerAgentWhatsAppError(`WhatsApp linked but route binding failed: ${detail}`, 502)
+    }
   }
 
   await upsertConsumerAgentSetting({
