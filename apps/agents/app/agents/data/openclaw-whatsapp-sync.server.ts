@@ -6,6 +6,14 @@ import { access } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 
+import {
+  OpenClawWhatsAppBridgeError,
+  bridgeLogoutWhatsApp,
+  bridgeStartWhatsAppLogin,
+  bridgeWaitWhatsAppLogin,
+  syncBridgeWhatsAppAccount,
+} from "./openclaw-whatsapp-bridge.server"
+
 const OPENCLAW_EXECUTABLE_ENV = "OPENCLAW_CLI_PATH"
 const OPENCLAW_CONFIG_BRIDGE_URL_ENV = "OPENCLAW_CONFIG_BRIDGE_URL"
 const OPENCLAW_CONFIG_BRIDGE_TOKEN_ENV = "OPENCLAW_CONFIG_BRIDGE_TOKEN"
@@ -336,10 +344,21 @@ export async function syncWhatsAppChannelAccount(args: { accountId: string }): P
     return
   }
 
+  const failures: string[] = [...bridgeAttempt.failures]
+  try {
+    await syncBridgeWhatsAppAccount({ accountId: args.accountId })
+    return
+  } catch (error) {
+    if (error instanceof OpenClawWhatsAppBridgeError) {
+      failures.push(`local-bridge: ${truncateErrorDetail(error.message)}`)
+    } else {
+      failures.push(`local-bridge: ${truncateErrorDetail(toExecErrorMessage(error))}`)
+    }
+  }
+
   const executableCandidates = await getOpenClawExecutableCandidates()
   ensureExecutableCandidates(executableCandidates)
 
-  const failures: string[] = [...bridgeAttempt.failures]
   const commandArgs = ["channels", "add", "--channel", "whatsapp", "--account", args.accountId]
 
   for (const executable of executableCandidates) {
@@ -380,10 +399,25 @@ export async function startWhatsAppWebLogin(args: {
     return { connected, message, qrDataUrl }
   }
 
+  const failures: string[] = [...bridgeAttempt.failures]
+  try {
+    const payload = await bridgeStartWhatsAppLogin({
+      accountId: args.accountId,
+      timeoutMs,
+      force: args.force,
+    })
+    return payload
+  } catch (error) {
+    if (error instanceof OpenClawWhatsAppBridgeError) {
+      failures.push(`local-bridge: ${truncateErrorDetail(error.message)}`)
+    } else {
+      failures.push(`local-bridge: ${truncateErrorDetail(toExecErrorMessage(error))}`)
+    }
+  }
+
   const executableCandidates = await getOpenClawExecutableCandidates()
   ensureExecutableCandidates(executableCandidates)
 
-  const failures: string[] = [...bridgeAttempt.failures]
   const commandArgs = [
     "gateway",
     "call",
@@ -442,10 +476,28 @@ export async function waitForWhatsAppWebLogin(args: {
     return { connected, message, qrDataUrl: null }
   }
 
+  const failures: string[] = [...bridgeAttempt.failures]
+  try {
+    const payload = await bridgeWaitWhatsAppLogin({
+      accountId: args.accountId,
+      timeoutMs,
+    })
+    return {
+      connected: payload.connected,
+      message: payload.message,
+      qrDataUrl: null,
+    }
+  } catch (error) {
+    if (error instanceof OpenClawWhatsAppBridgeError) {
+      failures.push(`local-bridge: ${truncateErrorDetail(error.message)}`)
+    } else {
+      failures.push(`local-bridge: ${truncateErrorDetail(toExecErrorMessage(error))}`)
+    }
+  }
+
   const executableCandidates = await getOpenClawExecutableCandidates()
   ensureExecutableCandidates(executableCandidates)
 
-  const failures: string[] = [...bridgeAttempt.failures]
   const commandArgs = [
     "gateway",
     "call",
@@ -494,10 +546,21 @@ export async function logoutWhatsAppChannelAccount(args: { accountId: string }):
     return
   }
 
+  const failures: string[] = [...bridgeAttempt.failures]
+  try {
+    await bridgeLogoutWhatsApp({ accountId: args.accountId })
+    return
+  } catch (error) {
+    if (error instanceof OpenClawWhatsAppBridgeError) {
+      failures.push(`local-bridge: ${truncateErrorDetail(error.message)}`)
+    } else {
+      failures.push(`local-bridge: ${truncateErrorDetail(toExecErrorMessage(error))}`)
+    }
+  }
+
   const executableCandidates = await getOpenClawExecutableCandidates()
   ensureExecutableCandidates(executableCandidates)
 
-  const failures: string[] = [...bridgeAttempt.failures]
   const commandArgs = ["channels", "logout", "--channel", "whatsapp", "--account", args.accountId]
 
   for (const executable of executableCandidates) {
