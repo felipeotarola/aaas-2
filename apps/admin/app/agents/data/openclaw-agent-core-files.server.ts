@@ -43,6 +43,36 @@ function toWorkspacePath(raw: string): string | null {
   return path.resolve(trimmed)
 }
 
+function buildWorkspaceCandidates(agentId: string, configuredWorkspacePath: string | null): string[] {
+  const candidates: string[] = []
+
+  if (configuredWorkspacePath) {
+    candidates.push(configuredWorkspacePath)
+  }
+
+  const roots = ["/home/node/.openclaw", "/root/.openclaw"]
+  for (const root of roots) {
+    candidates.push(path.join(root, `workspace-${agentId}`))
+    candidates.push(path.join(root, "agents", agentId, "workspace"))
+  }
+
+  return Array.from(new Set(candidates.map((value) => path.resolve(value))))
+}
+
+async function pickWorkspacePath(candidates: string[]): Promise<string | null> {
+  for (const candidate of candidates) {
+    for (const descriptor of CORE_FILE_DESCRIPTORS) {
+      const resolvedPath = path.join(candidate, descriptor.fileName)
+      const read = await readCoreFile(resolvedPath)
+      if (read.exists) {
+        return candidate
+      }
+    }
+  }
+
+  return candidates[0] ?? null
+}
+
 async function readCoreFile(filePath: string): Promise<Omit<AgentCoreFile, "kind" | "fileName">> {
   try {
     const value = await readFile(filePath, "utf8")
@@ -194,7 +224,8 @@ export async function getOpenClawAgentCoreFiles(rawAgentId: string): Promise<Get
     throw new OpenClawAgentsError(`Agent '${agentId}' was not found.`, 404)
   }
 
-  const workspacePath = toWorkspacePath(agent.workspace)
+  const configuredWorkspacePath = toWorkspacePath(agent.workspace)
+  const workspacePath = await pickWorkspacePath(buildWorkspaceCandidates(agentId, configuredWorkspacePath))
   if (!workspacePath) {
     return {
       agent,
