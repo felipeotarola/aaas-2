@@ -180,6 +180,10 @@ export async function startConsumerAgentWhatsAppLogin(args: {
 
   const previousConnection = parseWhatsAppConnection(setting)
   const accountId = normalizeAccountId(args.input.accountId, previousConnection?.accountId ?? "default")
+  const forceFreshLogin =
+    args.input.force === true ||
+    (previousConnection?.connected === false &&
+      normalizeText(previousConnection.lastLoginMessage).toLowerCase().includes("disconnected"))
 
   let syncFailureMessage: string | null = null
   try {
@@ -199,7 +203,7 @@ export async function startConsumerAgentWhatsAppLogin(args: {
     login = await startWhatsAppWebLogin({
       accountId,
       timeoutMs: normalizeTimeoutMs(args.input.timeoutMs, 35_000),
-      force: args.input.force,
+      force: forceFreshLogin,
     })
   } catch (error) {
     if (error instanceof OpenClawWhatsAppSyncError) {
@@ -354,11 +358,11 @@ export async function disconnectConsumerAgentWhatsApp(args: {
   const connection: ConsumerWhatsAppConnection = {
     connected: false,
     accountId,
-    linkedIdentity: previousConnection?.linkedIdentity ?? null,
+    linkedIdentity: null,
     lastLoginMessage: "Disconnected from WhatsApp.",
-    connectedAt: previousConnection?.connectedAt ?? null,
+    connectedAt: null,
     disconnectedAt: now,
-    lastVerifiedAt: previousConnection?.lastVerifiedAt ?? null,
+    lastVerifiedAt: null,
   }
 
   await upsertConsumerAgentSetting({

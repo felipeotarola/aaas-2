@@ -313,13 +313,13 @@ async function callGatewayMethodAtUrl(args: {
             minProtocol: 3,
             maxProtocol: 3,
             client: {
-              id: "aaas-2-config-bridge",
+              id: "gateway-client",
               version: "0.0.1",
               platform: "server",
-              mode: "operator",
+              mode: "backend",
             },
             role: "operator",
-            scopes: ["operator.read", "operator.write"],
+            scopes: ["operator.read", "operator.write", "operator.admin"],
             auth: { token: args.token },
             locale: "en-US",
             userAgent: "aaas-2-config-bridge/0.0.1",
@@ -455,6 +455,79 @@ export async function syncBridgeWhatsAppAccount(args: { accountId: string }): Pr
   return { accountId }
 }
 
+function removeRecordKey(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const next = { ...record }
+  delete next[key]
+  return next
+}
+
+function resolveNextDefaultAccountId(args: {
+  currentDefaultAccountId: string | null
+  removedAccountId: string
+  remainingAccounts: Record<string, unknown>
+}): string | null {
+  const remainingAccountIds = Object.keys(args.remainingAccounts)
+  if (remainingAccountIds.length === 0) {
+    return null
+  }
+
+  if (
+    args.currentDefaultAccountId &&
+    args.currentDefaultAccountId !== args.removedAccountId &&
+    args.currentDefaultAccountId in args.remainingAccounts
+  ) {
+    return args.currentDefaultAccountId
+  }
+
+  return remainingAccountIds[0] ?? null
+}
+
+export async function removeBridgeWhatsAppAccount(args: { accountId: string }): Promise<{ removed: boolean }> {
+  const accountId = normalizeAccountId(args.accountId)
+  const configPath = await resolveOpenClawConfigPath()
+  const config = await readOpenClawConfig(configPath)
+
+  const channels = asRecord(config.channels)
+  const whatsapp = asRecord(channels.whatsapp)
+  const accounts = asRecord(whatsapp.accounts)
+
+  if (!(accountId in accounts)) {
+    return { removed: false }
+  }
+
+  const nextAccounts = removeRecordKey(accounts, accountId)
+  const nextDefaultAccountId = resolveNextDefaultAccountId({
+    currentDefaultAccountId: asString(whatsapp.defaultAccount),
+    removedAccountId: accountId,
+    remainingAccounts: nextAccounts,
+  })
+
+  const nextWhatsAppBase: Record<string, unknown> = {
+    ...whatsapp,
+    enabled: Object.keys(nextAccounts).length > 0 && whatsapp.enabled !== false,
+    accounts: nextAccounts,
+  }
+
+  const nextWhatsApp: Record<string, unknown> = {
+    ...nextWhatsAppBase,
+    ...(nextDefaultAccountId ? { defaultAccount: nextDefaultAccountId } : {}),
+  }
+  if (!nextDefaultAccountId) {
+    delete nextWhatsApp.defaultAccount
+  }
+
+  const nextConfig: OpenClawConfig = {
+    ...config,
+    channels: {
+      ...channels,
+      whatsapp: nextWhatsApp,
+    },
+  }
+
+  await writeOpenClawConfig(configPath, nextConfig)
+  return { removed: true }
+}
+
 export async function bridgeStartWhatsAppLogin(args: {
   accountId: string
   timeoutMs?: number
@@ -505,15 +578,18 @@ export async function bridgeWaitWhatsAppLogin(args: {
 }
 
 export async function bridgeLogoutWhatsApp(args: { accountId: string }): Promise<{ cleared: boolean }> {
+  const accountId = normalizeAccountId(args.accountId)
   const payload = asRecord(
     await callGatewayMethod({
       method: "channels.logout",
       params: {
         channel: "whatsapp",
-        accountId: normalizeAccountId(args.accountId),
+        accountId,
       },
     }),
   )
+
+  await removeBridgeWhatsAppAccount({ accountId }).catch(() => {})
 
   return {
     cleared: payload.cleared !== false,
