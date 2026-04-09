@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
     .maybeSingle<{ is_admin: boolean; is_onboarded: boolean }>()
 
   const isAdmin = profile?.is_admin === true
-  const isOnboarded = FORCE_ONBOARDING ? false : profile?.is_onboarded === true
+  const isOnboarded = profile?.is_onboarded === true
 
   // Admins skip onboarding entirely
   if (isAdmin) {
@@ -44,14 +44,17 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // Non-admin, not onboarded → force onboarding
-  if (!isOnboarded && !isOnboardingRoute) {
-    return NextResponse.redirect(new URL(ONBOARDING_PATH, request.url))
-  }
+  // Only enforce onboarding when the feature flag is enabled
+  if (FORCE_ONBOARDING) {
+    // Non-admin, not onboarded → force onboarding
+    if (!isOnboarded && !isOnboardingRoute) {
+      return NextResponse.redirect(new URL(ONBOARDING_PATH, request.url))
+    }
 
-  // Already onboarded → don't let them back into onboarding
-  if (isOnboarded && isOnboardingRoute) {
-    return NextResponse.redirect(new URL("/", request.url))
+    // Already onboarded → don't let them back into onboarding
+    if (isOnboarded && isOnboardingRoute) {
+      return NextResponse.redirect(new URL("/", request.url))
+    }
   }
 
   return response
