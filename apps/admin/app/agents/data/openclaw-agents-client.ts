@@ -4,6 +4,7 @@ import type {
   DeleteOpenClawAgentResponse,
   GetOpenClawAgentCoreFilesResponse,
   ListOpenClawAgentsResponse,
+  UpdateOpenClawAgentOnboardingProfileRequest,
 } from "./contracts"
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -23,9 +24,23 @@ export async function fetchOpenClawAgents(): Promise<ListOpenClawAgentsResponse>
 
 export async function createOpenClawAgent(
   input: CreateOpenClawAgentRequest,
-): Promise<{ agent: CatalogAgent }> {
+): Promise<{ agent: CatalogAgent; metadataWarning?: string | null }> {
   const response = await fetch("/api/openclaw/agents", {
     method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  })
+
+  return parseResponse<{ agent: CatalogAgent; metadataWarning?: string | null }>(response)
+}
+
+export async function updateOpenClawAgentOnboardingProfile(
+  input: UpdateOpenClawAgentOnboardingProfileRequest,
+): Promise<{ agent: CatalogAgent }> {
+  const response = await fetch("/api/openclaw/agents", {
+    method: "PATCH",
     headers: {
       "content-type": "application/json",
     },

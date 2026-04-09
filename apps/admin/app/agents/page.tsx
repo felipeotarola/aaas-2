@@ -20,6 +20,7 @@ import {
   createOpenClawAgent,
   deleteOpenClawAgent,
   fetchOpenClawAgents,
+  updateOpenClawAgentOnboardingProfile,
 } from "@/app/agents/data/openclaw-agents-client"
 
 const defaultAdminSidebarUser: SidebarUser = {
@@ -73,6 +74,19 @@ function formatTimestamp(value: string): string {
   }).format(date)
 }
 
+function parseCapabilitiesInput(input: string): string[] {
+  const normalized = input
+    .split(/[\n,]+/g)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .slice(0, 8)
+  return Array.from(new Set(normalized))
+}
+
+function capabilitiesToInput(capabilities: string[] | undefined): string {
+  if (!Array.isArray(capabilities) || capabilities.length === 0) return ""
+  return capabilities.join(", ")
+}
 const PRIMARY_FALLBACK_MODEL = "openai-codex/gpt-5.4"
 const FALLBACK_MODELS = [PRIMARY_FALLBACK_MODEL]
 
@@ -81,6 +95,7 @@ export default function AdminAgentsPage() {
   const [catalogItems, setCatalogItems] = React.useState<CatalogAgent[]>([])
   const [activeSubscriptions, setActiveSubscriptions] = React.useState<ActiveConsumerAgentSubscription[]>([])
   const [subscriptionsError, setSubscriptionsError] = React.useState<string | null>(null)
+  const [metadataError, setMetadataError] = React.useState<string | null>(null)
   const [availableModels, setAvailableModels] = React.useState<string[]>(FALLBACK_MODELS)
   const [isLoading, setIsLoading] = React.useState(true)
   const [loadError, setLoadError] = React.useState<string | null>(null)
@@ -88,11 +103,20 @@ export default function AdminAgentsPage() {
   const [isCreateOpen, setIsCreateOpen] = React.useState(false)
   const [isSaving, setIsSaving] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
+  const [createWarning, setCreateWarning] = React.useState<string | null>(null)
+  const [isEditOpen, setIsEditOpen] = React.useState(false)
+  const [isUpdatingProfile, setIsUpdatingProfile] = React.useState(false)
+  const [editError, setEditError] = React.useState<string | null>(null)
+  const [editingAgentId, setEditingAgentId] = React.useState<string | null>(null)
+  const [editAgentDescription, setEditAgentDescription] = React.useState("")
+  const [editAgentCapabilitiesInput, setEditAgentCapabilitiesInput] = React.useState("")
   const [deleteError, setDeleteError] = React.useState<string | null>(null)
   const [deletingAgentId, setDeletingAgentId] = React.useState<string | null>(null)
   const [newAgentName, setNewAgentName] = React.useState("")
   const [newAgentId, setNewAgentId] = React.useState("")
   const [newAgentModel, setNewAgentModel] = React.useState(PRIMARY_FALLBACK_MODEL)
+  const [newAgentDescription, setNewAgentDescription] = React.useState("")
+  const [newAgentCapabilitiesInput, setNewAgentCapabilitiesInput] = React.useState("")
 
   const loadAgents = React.useCallback(async () => {
     setIsLoading(true)
@@ -103,6 +127,7 @@ export default function AdminAgentsPage() {
       setCatalogItems(payload.agents)
       setActiveSubscriptions(payload.activeSubscriptions ?? [])
       setSubscriptionsError(payload.subscriptionsError ?? null)
+      setMetadataError(payload.metadataError ?? null)
 
       const models = payload.availableModels.length > 0 ? payload.availableModels : FALLBACK_MODELS
       setAvailableModels(models)
@@ -142,6 +167,7 @@ export default function AdminAgentsPage() {
     if (!canCreate) return
 
     setCreateError(null)
+    setCreateWarning(null)
     setIsSaving(true)
 
     try {
@@ -149,16 +175,52 @@ export default function AdminAgentsPage() {
         name: newAgentName.trim(),
         id: newAgentId.trim() || undefined,
         model: newAgentModel.trim() || undefined,
+        onboardingDescription: newAgentDescription.trim() || undefined,
+        onboardingCapabilities: parseCapabilitiesInput(newAgentCapabilitiesInput),
       })
 
       setCatalogItems((prev) => [response.agent, ...prev])
       setNewAgentName("")
       setNewAgentId("")
+      setNewAgentDescription("")
+      setNewAgentCapabilitiesInput("")
+      setCreateWarning(response.metadataWarning ?? null)
       setIsCreateOpen(false)
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : "Failed to create agent")
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleOpenEditProfile = (agent: CatalogAgent) => {
+    setEditError(null)
+    setEditingAgentId(agent.id)
+    setEditAgentDescription(agent.onboardingDescription ?? "")
+    setEditAgentCapabilitiesInput(capabilitiesToInput(agent.onboardingCapabilities))
+    setIsEditOpen(true)
+  }
+
+  const handleSaveEditProfile = async () => {
+    if (!editingAgentId || isUpdatingProfile) return
+
+    setEditError(null)
+    setIsUpdatingProfile(true)
+
+    try {
+      const response = await updateOpenClawAgentOnboardingProfile({
+        agentId: editingAgentId,
+        onboardingDescription: editAgentDescription,
+        onboardingCapabilities: parseCapabilitiesInput(editAgentCapabilitiesInput),
+      })
+
+      setCatalogItems((prev) => prev.map((agent) => (agent.id === response.agent.id ? response.agent : agent)))
+      setIsEditOpen(false)
+      setEditingAgentId(null)
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Failed to update onboarding profile")
+    } finally {
+      setIsUpdatingProfile(false)
     }
   }
 
@@ -208,6 +270,16 @@ export default function AdminAgentsPage() {
             </Button>
           </div>
         ) : null}
+        {!loadError && metadataError ? (
+          <div className="border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            {metadataError}
+          </div>
+        ) : null}
+        {createWarning ? (
+          <div className="border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            {createWarning}
+          </div>
+        ) : null}
 
         <Sheet open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <SheetContent side="right" className="w-full border-l sm:max-w-lg">
@@ -250,9 +322,31 @@ export default function AdminAgentsPage() {
                   ))}
                 </datalist>
               </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-muted-foreground">Onboarding description (optional)</label>
+                <textarea
+                  value={newAgentDescription}
+                  onChange={(e) => setNewAgentDescription(e.target.value)}
+                  placeholder="What this agent does, in one concise sentence."
+                  rows={3}
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-muted-foreground">Capability badges (optional)</label>
+                <Input
+                  value={newAgentCapabilitiesInput}
+                  onChange={(e) => setNewAgentCapabilitiesInput(e.target.value)}
+                  placeholder="Vulnerability scanning, Config auditing, Compliance"
+                />
+                <p className="text-xs text-muted-foreground">Separate badges with commas (max 8).</p>
+              </div>
 
               {createError ? (
                 <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>
+              ) : null}
+              {createWarning ? (
+                <p className="text-sm text-amber-600 dark:text-amber-400">{createWarning}</p>
               ) : null}
 
               <div className="mt-2 flex items-center gap-2">
@@ -260,6 +354,62 @@ export default function AdminAgentsPage() {
                   {isSaving ? "Creating..." : "Create Agent"}
                 </Button>
                 <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet
+          open={isEditOpen}
+          onOpenChange={(open) => {
+            setIsEditOpen(open)
+            if (!open) {
+              setEditingAgentId(null)
+              setEditError(null)
+            }
+          }}
+        >
+          <SheetContent side="right" className="w-full border-l sm:max-w-lg">
+            <SheetHeader>
+              <SheetTitle>Edit Onboarding Profile</SheetTitle>
+              <SheetDescription>
+                Customize how this agent appears during user onboarding.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="grid gap-4 px-4 pb-6">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-muted-foreground">Agent ID</label>
+                <Input value={editingAgentId ?? ""} readOnly />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-muted-foreground">Onboarding description</label>
+                <textarea
+                  value={editAgentDescription}
+                  onChange={(e) => setEditAgentDescription(e.target.value)}
+                  placeholder="What this agent does, in one concise sentence."
+                  rows={3}
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-muted-foreground">Capability badges</label>
+                <Input
+                  value={editAgentCapabilitiesInput}
+                  onChange={(e) => setEditAgentCapabilitiesInput(e.target.value)}
+                  placeholder="Vulnerability scanning, Config auditing, Compliance"
+                />
+                <p className="text-xs text-muted-foreground">Separate badges with commas (max 8).</p>
+              </div>
+
+              {editError ? <p className="text-sm text-red-600 dark:text-red-400">{editError}</p> : null}
+
+              <div className="mt-2 flex items-center gap-2">
+                <Button onClick={() => void handleSaveEditProfile()} disabled={!editingAgentId || isUpdatingProfile}>
+                  {isUpdatingProfile ? "Saving..." : "Save Profile"}
+                </Button>
+                <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isUpdatingProfile}>
                   Cancel
                 </Button>
               </div>
@@ -294,10 +444,11 @@ export default function AdminAgentsPage() {
             <p className="border-b px-4 py-2 text-sm text-red-600 dark:text-red-400">{deleteError}</p>
           ) : null}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className="w-full min-w-[1040px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Agent</th>
+                  <th className="px-4 py-3 font-medium">Onboarding Profile</th>
                   <th className="px-4 py-3 font-medium">AI Model</th>
                   <th className="px-4 py-3 font-medium">Workspace</th>
                   <th className="px-4 py-3 font-medium">Status</th>
@@ -314,6 +465,29 @@ export default function AdminAgentsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
+                      {agent.onboardingDescription || (agent.onboardingCapabilities?.length ?? 0) > 0 ? (
+                        <div className="flex max-w-sm flex-col gap-2">
+                          {agent.onboardingDescription ? (
+                            <p className="line-clamp-2 text-xs text-muted-foreground">{agent.onboardingDescription}</p>
+                          ) : null}
+                          {(agent.onboardingCapabilities?.length ?? 0) > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {agent.onboardingCapabilities?.slice(0, 4).map((capability) => (
+                                <span
+                                  key={`${agent.id}-${capability}`}
+                                  className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground"
+                                >
+                                  {capability}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Default runtime profile</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex flex-col">
                         <span>{agent.aiModel}</span>
                         <span className="text-xs uppercase text-muted-foreground">{agent.aiProvider}</span>
@@ -327,6 +501,9 @@ export default function AdminAgentsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleOpenEditProfile(agent)}>
+                          Edit Profile
+                        </Button>
                         <Button size="sm" variant="secondary" asChild>
                           <Link href={`/agents/${encodeURIComponent(agent.id)}`} className="gap-1">
                             <FileCode2 className="size-3.5" />
@@ -355,7 +532,7 @@ export default function AdminAgentsPage() {
                 ))}
                 {catalogItems.length === 0 && !isLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted-foreground">
                       No OpenClaw agents found yet.
                     </td>
                   </tr>

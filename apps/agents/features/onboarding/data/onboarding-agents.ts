@@ -25,6 +25,17 @@ type AssistantMetadata = {
   primaryChannel: string | null
 }
 
+type AgentCatalogMetadataRow = {
+  agent_id: string
+  description: string | null
+  capabilities: string[] | null
+}
+
+type AgentCatalogMetadata = {
+  description: string | null
+  capabilities: string[]
+}
+
 const ICON_PALETTE: OnboardingAgent["icon"][] = [
   "bot",
   "code",
@@ -120,6 +131,48 @@ async function fetchAssistantsMetadata(): Promise<Map<string, AssistantMetadata>
   }
 }
 
+function normalizeCapabilityList(value: string[] | null | undefined): string[] {
+  if (!Array.isArray(value)) return []
+
+  const items = value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0)
+    .slice(0, 8)
+
+  return Array.from(new Set(items))
+}
+
+async function fetchAgentCatalogMetadata(): Promise<Map<string, AgentCatalogMetadata>> {
+  try {
+    const supabase = createSupabaseBrowserClient()
+    const { data, error } = await supabase
+      .from("agent_catalog_metadata")
+      .select("agent_id, description, capabilities")
+      .limit(300)
+      .returns<AgentCatalogMetadataRow[]>()
+
+    if (error || !data) {
+      return new Map()
+    }
+
+    const map = new Map<string, AgentCatalogMetadata>()
+
+    for (const row of data) {
+      const agentId = typeof row.agent_id === "string" ? row.agent_id.trim() : ""
+      if (!agentId) continue
+
+      map.set(agentId, {
+        description: typeof row.description === "string" ? row.description.trim() : null,
+        capabilities: normalizeCapabilityList(row.capabilities),
+      })
+    }
+
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
 function stableIndex(key: string, total: number): number {
   let hash = 0
   for (let i = 0; i < key.length; i += 1) {
@@ -143,15 +196,37 @@ function inferCategory(id: string, name: string, roleLabel: string | null): stri
   return "Assistant"
 }
 
-function buildDefaultDescription(agent: RuntimeAgent, category: string, roleLabel: string | null): string {
-  if (roleLabel?.trim()) {
-    return roleLabel.trim()
+function buildDefaultDescription(args: {
+  agent: RuntimeAgent
+  category: string
+  catalogDescription: string | null
+  roleLabel: string | null
+}): string {
+  const catalogDescription = args.catalogDescription?.trim() ?? ""
+  if (catalogDescription) {
+    return catalogDescription
   }
 
-  return `${category} agent running on ${agent.aiModel}.`
+  if (args.roleLabel?.trim()) {
+    return args.roleLabel.trim()
+  }
+
+  return `${args.category} agent running on ${args.agent.aiModel}.`
 }
 
-function buildCapabilities(category: string, primaryChannel: string | null): string[] {
+function buildCapabilities(args: {
+  category: string
+  primaryChannel: string | null
+  catalogCapabilities: string[]
+}): string[] {
+  if (args.catalogCapabilities.length > 0) {
+    const explicit = [...args.catalogCapabilities]
+    if (args.primaryChannel) {
+      explicit.push(`${args.primaryChannel} integration`)
+    }
+    return Array.from(new Set(explicit)).slice(0, 4)
+  }
+
   const defaultCapabilities = ["Task assistance", "Workflow automation", "General Q&A"]
   const baseByCategory: Record<string, string[]> = {
     Security: ["Vulnerability scanning", "Config auditing", "Compliance checks"],
@@ -163,10 +238,10 @@ function buildCapabilities(category: string, primaryChannel: string | null): str
     Assistant: defaultCapabilities,
   }
 
-  const capabilities = [...(baseByCategory[category] ?? defaultCapabilities)]
+  const capabilities = [...(baseByCategory[args.category] ?? defaultCapabilities)]
 
-  if (primaryChannel) {
-    capabilities.push(`${primaryChannel} integration`)
+  if (args.primaryChannel) {
+    capabilities.push(`${args.primaryChannel} integration`)
   }
 
   return Array.from(new Set(capabilities)).slice(0, 4)
@@ -216,13 +291,15 @@ function buildSuggestions(category: string): string[] {
 }
 
 export async function fetchOnboardingAgents(): Promise<OnboardingAgent[]> {
-  const [runtimeAgents, metadata] = await Promise.all([
+  const [runtimeAgents, metadata, catalogMetadata] = await Promise.all([
     fetchRuntimeAgents(),
     fetchAssistantsMetadata(),
+    fetchAgentCatalogMetadata(),
   ])
 
   return runtimeAgents.map((agent) => {
     const meta = metadata.get(agent.id)
+    const catalogMeta = catalogMetadata.get(agent.id)
     const category = inferCategory(agent.id, agent.name, meta?.roleLabel ?? null)
     const icon = ICON_PALETTE[stableIndex(agent.id, ICON_PALETTE.length)] ?? "bot"
     const color = COLOR_PALETTE[stableIndex(`${agent.id}-color`, COLOR_PALETTE.length)] ?? "from-sky-500 to-indigo-500"
@@ -230,11 +307,20 @@ export async function fetchOnboardingAgents(): Promise<OnboardingAgent[]> {
     return {
       id: agent.id,
       name: agent.name,
-      description: buildDefaultDescription(agent, category, meta?.roleLabel ?? null),
+      description: buildDefaultDescription({
+        agent,
+        category,
+        catalogDescription: catalogMeta?.description ?? null,
+        roleLabel: meta?.roleLabel ?? null,
+      }),
       icon,
       color,
       category,
-      capabilities: buildCapabilities(category, meta?.primaryChannel ?? null),
+      capabilities: buildCapabilities({
+        category,
+        primaryChannel: meta?.primaryChannel ?? null,
+        catalogCapabilities: catalogMeta?.capabilities ?? [],
+      }),
       suggestions: buildSuggestions(category),
       aiModel: agent.aiModel,
       status: agent.status,

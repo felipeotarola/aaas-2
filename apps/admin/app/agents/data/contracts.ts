@@ -8,6 +8,8 @@ export type CatalogAgent = {
   status: "published" | "draft" | "paused"
   activeUsers: number
   workspace: string
+  onboardingDescription?: string | null
+  onboardingCapabilities?: string[]
 }
 
 export type ActiveConsumerAgentSubscription = {
@@ -26,12 +28,21 @@ export type ListOpenClawAgentsResponse = {
   availableModels: string[]
   activeSubscriptions?: ActiveConsumerAgentSubscription[]
   subscriptionsError?: string | null
+  metadataError?: string | null
 }
 
 export type CreateOpenClawAgentRequest = {
   name: string
   id?: string
   model?: string
+  onboardingDescription?: string
+  onboardingCapabilities?: string[]
+}
+
+export type UpdateOpenClawAgentOnboardingProfileRequest = {
+  agentId: string
+  onboardingDescription?: string
+  onboardingCapabilities?: string[]
 }
 
 export type DeleteOpenClawAgentResponse = {
