@@ -93,6 +93,14 @@ function normalizeRuntimeAgent(input: unknown): RuntimeAgent | null {
   }
 }
 
+function isSelectableOnboardingRuntimeAgent(agent: RuntimeAgent): boolean {
+  const normalizedId = agent.id.trim().toLowerCase()
+  const normalizedName = agent.name.trim().toLowerCase()
+
+  // "main" is the orchestrator/system agent and should not be user-selectable.
+  return normalizedId !== "main" && normalizedName !== "main"
+}
+
 async function fetchRuntimeAgents(): Promise<RuntimeAgent[]> {
   const response = await fetch("/api/openclaw/agents", { cache: "no-store" })
   const payload = (await response.json().catch(() => null)) as RuntimeAgentsResponse & { error?: string } | null
@@ -330,7 +338,7 @@ export async function fetchOnboardingAgents(): Promise<OnboardingAgent[]> {
     fetchActiveAgentIds(),
   ])
 
-  return runtimeAgents.map((agent) => {
+  return runtimeAgents.filter(isSelectableOnboardingRuntimeAgent).map((agent) => {
     const meta = metadata.get(agent.id)
     const catalogMeta = catalogMetadata.get(agent.id)
     const category = inferCategory(agent.id, agent.name, meta?.roleLabel ?? null)
