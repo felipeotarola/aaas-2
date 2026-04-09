@@ -3,22 +3,29 @@
 import * as React from "react"
 import { motion } from "framer-motion"
 import {
+  AlertTriangle,
   ArrowRight,
   Bot,
   Briefcase,
   Code,
   GraduationCap,
   Heart,
+  Loader2,
   Megaphone,
   Pencil,
   Shield,
 } from "lucide-react"
 
+import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
-import { ONBOARDING_AGENTS, type OnboardingAgent } from "../domain/types"
+import type { OnboardingAgent } from "../domain/types"
 
 type ChooseAgentStepProps = {
+  agents: OnboardingAgent[]
   selectedAgentId: string | null
+  isLoading: boolean
+  error: string | null
+  onRetry: () => void
   onSelect: (agentId: string) => void
   onContinue: () => void
 }
@@ -32,6 +39,18 @@ const ICON_MAP: Record<OnboardingAgent["icon"], React.ComponentType<{ className?
   megaphone: Megaphone,
   graduation: GraduationCap,
   shield: Shield,
+}
+
+function statusBadgeClass(status: OnboardingAgent["status"]) {
+  if (status === "published") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+  }
+
+  if (status === "paused") {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-700"
+  }
+
+  return "border-slate-500/30 bg-slate-500/10 text-slate-700"
 }
 
 function AgentCard({
@@ -53,7 +72,7 @@ function AgentCard({
       type="button"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: index * 0.08 }}
+      transition={{ duration: 0.4, delay: index * 0.06 }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={onSelect}
@@ -65,37 +84,34 @@ function AgentCard({
           : "border-border/50 bg-card hover:border-accent/50 hover:bg-card/80",
       )}
     >
-      {/* Gradient icon */}
-      <div
-        className={cn(
-          "flex size-12 items-center justify-center rounded-xl bg-gradient-to-br transition-transform duration-300",
-          agent.color,
-          isHovered && "scale-110",
-        )}
-      >
-        <Icon className="size-6 text-white" />
+      <div className="flex w-full items-start justify-between gap-3">
+        <div
+          className={cn(
+            "flex size-12 items-center justify-center rounded-xl bg-gradient-to-br transition-transform duration-300",
+            agent.color,
+            isHovered && "scale-110",
+          )}
+        >
+          <Icon className="size-6 text-white" />
+        </div>
+        <span className={cn("inline-flex border px-2 py-0.5 text-xs capitalize", statusBadgeClass(agent.status))}>
+          {agent.status}
+        </span>
       </div>
 
-      {/* Title + arrow */}
       <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
         {agent.name}
         <ArrowRight
           className={cn(
             "size-4 transition-all duration-300",
-            isHovered || isSelected
-              ? "translate-x-0 opacity-100"
-              : "-translate-x-2 opacity-0",
+            isHovered || isSelected ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0",
           )}
         />
       </h3>
 
-      {/* Description */}
-      <p className="text-sm leading-relaxed text-muted-foreground">
-        {agent.description}
-      </p>
+      <p className="text-sm leading-relaxed text-muted-foreground">{agent.description}</p>
 
-      {/* Capability pills */}
-      <div className="mt-auto flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
         {agent.capabilities.slice(0, 3).map((cap) => (
           <span
             key={cap}
@@ -106,7 +122,8 @@ function AgentCard({
         ))}
       </div>
 
-      {/* Hover glow overlay */}
+      <p className="mt-auto text-xs text-muted-foreground">Model: {agent.aiModel}</p>
+
       <div
         className={cn(
           "pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br opacity-0 transition-opacity duration-300",
@@ -119,7 +136,11 @@ function AgentCard({
 }
 
 export function ChooseAgentStep({
+  agents,
   selectedAgentId,
+  isLoading,
+  error,
+  onRetry,
   onSelect,
   onContinue,
 }: ChooseAgentStepProps) {
@@ -131,34 +152,57 @@ export function ChooseAgentStep({
         transition={{ duration: 0.5 }}
         className="flex flex-col gap-3 text-center"
       >
-        <h1 className="text-balance text-4xl font-bold tracking-tight md:text-5xl">
-          Choose your agent
-        </h1>
+        <h1 className="text-balance text-4xl font-bold tracking-tight md:text-5xl">Choose your agent</h1>
         <p className="mx-auto max-w-2xl text-pretty text-lg text-muted-foreground">
-          Select an AI agent to personalize and deploy. Each agent specializes in
-          different tasks and can be customized to your needs.
+          Select one of your configured OpenClaw agents to personalize and activate.
         </p>
       </motion.header>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {ONBOARDING_AGENTS.map((agent, i) => (
-          <AgentCard
-            key={agent.id}
-            agent={agent}
-            index={i}
-            isSelected={selectedAgentId === agent.id}
-            onSelect={() => {
-              onSelect(agent.id)
-              onContinue()
-            }}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="flex items-center justify-center gap-2 border border-dashed p-8 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          Loading agents from runtime...
+        </div>
+      ) : null}
+
+      {!isLoading && error ? (
+        <div className="flex flex-col items-center justify-center gap-3 border border-destructive/30 bg-destructive/10 p-6 text-center">
+          <p className="inline-flex items-center gap-2 text-sm text-destructive">
+            <AlertTriangle className="size-4" />
+            {error}
+          </p>
+          <Button variant="outline" size="sm" onClick={onRetry}>Retry</Button>
+        </div>
+      ) : null}
+
+      {!isLoading && !error ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {agents.map((agent, i) => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              index={i}
+              isSelected={selectedAgentId === agent.id}
+              onSelect={() => {
+                onSelect(agent.id)
+                onContinue()
+              }}
+            />
+          ))}
+          {agents.length === 0 ? (
+            <div className="sm:col-span-2 lg:col-span-3">
+              <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">
+                No configured OpenClaw agents found yet.
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <motion.footer
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.8, duration: 0.5 }}
+        transition={{ delay: 0.5, duration: 0.5 }}
         className="text-center"
       >
         <p className="text-sm text-muted-foreground">

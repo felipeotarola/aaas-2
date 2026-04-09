@@ -1,8 +1,8 @@
 export { ChooseAgentStep } from "./components/choose-agent-step"
 export { OnboardingChat } from "./components/onboarding-chat"
 export { useOnboardingGuard } from "./hooks/use-onboarding-guard"
-export { fetchOnboardingStatus, markOnboarded } from "./data/onboarding-profile"
-export { ONBOARDING_AGENTS } from "./domain/types"
+export { fetchOnboardingAgents } from "./data/onboarding-agents"
+export { completeOnboarding, fetchOnboardingStatus, markOnboarded } from "./data/onboarding-profile"
 export type {
   OnboardingStep,
   OnboardingState,

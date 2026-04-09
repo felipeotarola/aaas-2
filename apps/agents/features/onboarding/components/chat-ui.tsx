@@ -34,12 +34,14 @@ export function MessageBubble({
   onChoiceSelect,
   onConfirm,
   onRestart,
+  isConfirming,
 }: {
   message: ChatMessage
   agent?: OnboardingAgent
   onChoiceSelect?: (value: string) => void
   onConfirm?: () => void
   onRestart?: () => void
+  isConfirming?: boolean
 }) {
   const isUser = message.role === "user"
 
@@ -93,11 +95,21 @@ export function MessageBubble({
 
         {message.type === "confirmation" ? (
           <div className="flex gap-2 pt-1">
-            <Button size="sm" onClick={onConfirm} className="gap-1.5">
+            <Button
+              size="sm"
+              onClick={onConfirm}
+              className="gap-1.5"
+              disabled={isConfirming}
+            >
               <Check className="size-3.5" />
-              Confirm &amp; Start
+              {isConfirming ? "Saving..." : "Confirm &amp; Start"}
             </Button>
-            <Button size="sm" variant="outline" onClick={onRestart}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onRestart}
+              disabled={isConfirming}
+            >
               Start Over
             </Button>
           </div>

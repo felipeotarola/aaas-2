@@ -1,4 +1,5 @@
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser"
+import type { OnboardingCollectedData } from "../domain/types"
 
 export async function fetchOnboardingStatus(): Promise<{
   isOnboarded: boolean
@@ -39,4 +40,36 @@ export async function markOnboarded(): Promise<void> {
     .eq("id", user.id)
 
   if (error) throw new Error(error.message)
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  const payload = (await response.json().catch(() => null)) as { error?: string } & T
+
+  if (!response.ok) {
+    throw new Error(payload?.error || `Request failed (${response.status})`)
+  }
+
+  return payload
+}
+
+export async function completeOnboarding(args: {
+  agentId: string
+  collected: OnboardingCollectedData
+}): Promise<void> {
+  const response = await fetch("/api/onboarding/complete", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      agentId: args.agentId,
+      userName: args.collected.userName,
+      agentName: args.collected.agentName,
+      agentDescription: args.collected.agentDescription,
+      knowledgeSources: args.collected.knowledgeSources,
+      channels: args.collected.channels,
+    }),
+  })
+
+  await parseResponse<{ complete: boolean }>(response)
 }

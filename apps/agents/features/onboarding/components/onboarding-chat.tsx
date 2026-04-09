@@ -7,7 +7,6 @@ import { ArrowLeft, Bot, Link2, Send, Upload } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 import {
-  ONBOARDING_AGENTS,
   type ChannelChoice,
   type ChatStepId,
   type KnowledgeSource,
@@ -24,21 +23,22 @@ import {
 } from "./chat-ui"
 
 type OnboardingChatProps = {
-  agentId: string
+  agent: OnboardingAgent
   onBack: () => void
-  onComplete: (data: OnboardingCollectedData) => void
-}
-
-function getAgent(agentId: string): OnboardingAgent | undefined {
-  return ONBOARDING_AGENTS.find((a) => a.id === agentId)
+  onComplete: (data: OnboardingCollectedData) => Promise<void> | void
+  isCompleting?: boolean
 }
 
 function isLikelyUrl(text: string): boolean {
   return /^https?:\/\/.+/i.test(text.trim()) || /^www\..+\..+/i.test(text.trim())
 }
 
-export function OnboardingChat({ agentId, onBack, onComplete }: OnboardingChatProps) {
-  const agent = getAgent(agentId)
+export function OnboardingChat({
+  agent,
+  onBack,
+  onComplete,
+  isCompleting = false,
+}: OnboardingChatProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const bottomRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -96,8 +96,7 @@ export function OnboardingChat({ agentId, onBack, onComplete }: OnboardingChatPr
       `Hey there! 👋 I'm going to help you set up ${agentLabel}. I'll ask a few quick questions so I can personalize everything for you.\n\nFirst — what's your name?`,
       "ask-user-name",
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [agent?.name, chatStep, pushAssistant])
 
   // ─── Process text answers ───────────────────────────
 
@@ -269,24 +268,22 @@ export function OnboardingChat({ agentId, onBack, onComplete }: OnboardingChatPr
       "confirm",
       { type: "confirmation" },
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userName, agentName, agentDescription, sources, selectedChannels, pushAssistant])
 
   const handleConfirm = () => {
-    setChatStep("done")
-    pushAssistant("Setting everything up for you… 🚀")
-    setTimeout(() => {
-      onComplete({
-        userName,
-        agentName,
-        agentDescription,
-        knowledgeSources: sources,
-        channels: selectedChannels,
-      })
-    }, 1200)
+    if (isCompleting) return
+
+    void onComplete({
+      userName,
+      agentName,
+      agentDescription,
+      knowledgeSources: sources,
+      channels: selectedChannels,
+    })
   }
 
   const handleRestart = () => {
+    if (isCompleting) return
     pushAssistant("No worries! Let's start over. What's your name?", "ask-user-name")
     setUserName(null)
     setAgentName(null)
@@ -586,6 +583,7 @@ export function OnboardingChat({ agentId, onBack, onComplete }: OnboardingChatPr
                 onChoiceSelect={handleChoiceSelect}
                 onConfirm={handleConfirm}
                 onRestart={handleRestart}
+                isConfirming={isCompleting}
               />
             ))}
             {isTyping ? <TypingIndicator key="typing" agent={agent} /> : null}
