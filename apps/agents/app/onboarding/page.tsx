@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 import {
   ChooseAgentStep,
@@ -13,8 +13,24 @@ import {
 import type { OnboardingStep, OnboardingCollectedData, OnboardingAgent } from "@/features/onboarding"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
+function normalizeAgentId(raw: string | null): string {
+  const value = (raw ?? "").trim().toLowerCase()
+  if (!value) return ""
+
+  return value
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64)
+}
+
 export default function OnboardingPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const requestedAgentId = React.useMemo(
+    () => normalizeAgentId(searchParams.get("agentId")),
+    [searchParams],
+  )
+  const isScopedAgentSetup = requestedAgentId.length > 0
   const { isChecking } = useOnboardingGuard()
   const [step, setStep] = React.useState<OnboardingStep>("choose-agent")
   const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(null)
@@ -35,14 +51,27 @@ export default function OnboardingPage() {
     try {
       const runtimeAgents = await fetchOnboardingAgents()
       setAvailableAgents(runtimeAgents)
-      setSelectedAgentId((current) => {
-        if (current && runtimeAgents.some((agent) => agent.id === current)) {
-          return current
-        }
+      const requestedAgent = requestedAgentId
+        ? runtimeAgents.find((agent) => agent.id === requestedAgentId)
+        : null
 
-        const alreadySelected = runtimeAgents.find((agent) => agent.isAlreadySelected)
-        return alreadySelected?.id ?? null
-      })
+      if (requestedAgent) {
+        setSelectedAgentId(requestedAgent.id)
+        setStep("chat")
+      } else if (requestedAgentId) {
+        setSelectedAgentId(null)
+        setStep("choose-agent")
+        setCompletionError("The requested agent setup is unavailable. Pick another agent to continue.")
+      } else {
+        setSelectedAgentId((current) => {
+          if (current && runtimeAgents.some((agent) => agent.id === current)) {
+            return current
+          }
+
+          const alreadySelected = runtimeAgents.find((agent) => agent.isAlreadySelected)
+          return alreadySelected?.id ?? null
+        })
+      }
     } catch (error) {
       setAvailableAgents([])
       setSelectedAgentId(null)
@@ -50,7 +79,7 @@ export default function OnboardingPage() {
     } finally {
       setIsAgentsLoading(false)
     }
-  }, [])
+  }, [requestedAgentId])
 
   React.useEffect(() => {
     void loadAgents()
@@ -68,7 +97,11 @@ export default function OnboardingPage() {
       }
 
       await completeOnboarding({ agentId: selectedAgentId, collected: data })
-      router.replace("/")
+      if (isScopedAgentSetup) {
+        router.replace(`/agents/${selectedAgentId}`)
+      } else {
+        router.replace("/")
+      }
     } catch (error) {
       console.error("Failed to mark onboarding complete", error)
       setCompletionError("Could not save onboarding status. Please try again.")
@@ -99,7 +132,14 @@ export default function OnboardingPage() {
         <OnboardingChat
           agent={selectedAgent}
           isCompleting={isCompleting}
-          onBack={() => setStep("choose-agent")}
+          onBack={() => {
+            if (isScopedAgentSetup) {
+              router.replace("/agents/discover")
+              return
+            }
+
+            setStep("choose-agent")
+          }}
           onComplete={(data) => void handleComplete(data)}
         />
       </main>

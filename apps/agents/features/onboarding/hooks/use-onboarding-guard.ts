@@ -19,14 +19,8 @@ export function useOnboardingGuard() {
     void fetchOnboardingStatus().then(({ isOnboarded, isAdmin }) => {
       if (!mounted) return
 
-      // When FORCE_ONBOARDING is set, the middleware handles redirection;
-      // the client guard simply allows rendering the onboarding page.
-      if (isOnboarded || isAdmin) {
-        // Still allow if middleware sent us here (force-onboarding mode)
-        if (window.location.pathname === "/onboarding") {
-          setIsChecking(false)
-          return
-        }
+      const hasScopedAgentSetup = new URL(window.location.href).searchParams.get("agentId")?.trim().length
+      if (isAdmin || (isOnboarded && !hasScopedAgentSetup)) {
         router.replace("/")
         return
       }

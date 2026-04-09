@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Settings2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { AppShell } from "@workspace/ui/components/app-shell"
-import { fetchConsumerAgentSettings, upsertConsumerAgentSetting } from "@/app/agents/data/consumer-agent-settings-client"
+import { fetchConsumerAgentSettings } from "@/app/agents/data/consumer-agent-settings-client"
 import type { CatalogAgent, ConsumerAgentSetting } from "@/app/agents/data/contracts"
 import { fetchOpenClawAgents } from "@/app/agents/data/openclaw-agents-client"
 import { useSidebarUser } from "@/lib/auth/use-sidebar-user"
@@ -23,18 +23,6 @@ function badgeClass(value: CatalogAgent["status"]) {
   return "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300"
 }
 
-function mergeSetting(items: ConsumerAgentSetting[], setting: ConsumerAgentSetting): ConsumerAgentSetting[] {
-  const index = items.findIndex((item) => item.agentId === setting.agentId)
-
-  if (index === -1) {
-    return [setting, ...items]
-  }
-
-  const next = [...items]
-  next[index] = setting
-  return next
-}
-
 export default function ConsumerDiscoverAgentsPage() {
   const sidebarUser = useSidebarUser(defaultAgentsSidebarUser)
   const [catalogItems, setCatalogItems] = React.useState<CatalogAgent[]>([])
@@ -43,7 +31,6 @@ export default function ConsumerDiscoverAgentsPage() {
   const [isSettingsLoading, setIsSettingsLoading] = React.useState(true)
   const [catalogError, setCatalogError] = React.useState<string | null>(null)
   const [settingsError, setSettingsError] = React.useState<string | null>(null)
-  const [updatingAgentId, setUpdatingAgentId] = React.useState<string | null>(null)
 
   const loadCatalog = React.useCallback(async () => {
     setIsCatalogLoading(true)
@@ -94,33 +81,13 @@ export default function ConsumerDiscoverAgentsPage() {
     [activeIds, catalogItems],
   )
 
-  const toggleAgent = async (id: string) => {
-    const nextActive = !activeIds.has(id)
-
-    setUpdatingAgentId(id)
-    setSettingsError(null)
-
-    try {
-      const payload = await upsertConsumerAgentSetting({
-        agentId: id,
-        isActive: nextActive,
-      })
-
-      setSettingsItems((prev) => mergeSetting(prev, payload.setting))
-    } catch (error) {
-      setSettingsError(error instanceof Error ? error.message : "Failed to update consumer agent settings")
-    } finally {
-      setUpdatingAgentId(null)
-    }
-  }
-
   return (
     <AppShell sidebar={getConsumerSidebar("discover", sidebarUser)}>
       <main id="page-main" className="flex h-full w-full flex-1 flex-col gap-6 overflow-auto p-6 md:p-8">
         <header className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">Discover Agents</h1>
           <p className="text-sm text-muted-foreground">
-            Browse agents you can activate. When activated, the agent moves to Active Agents and gets a workspace unique to your account.
+            Browse agents and start setup. Additional agents are configured through onboarding from this page.
           </p>
         </header>
 
@@ -163,9 +130,6 @@ export default function ConsumerDiscoverAgentsPage() {
               </thead>
               <tbody>
                 {visibleCatalogItems.map((agent) => {
-                  const isActive = activeIds.has(agent.id)
-                  const isUpdating = updatingAgentId === agent.id
-
                   return (
                     <tr key={agent.id} className="border-b last:border-b-0">
                       <td className="px-4 py-3">
@@ -188,23 +152,14 @@ export default function ConsumerDiscoverAgentsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant={isActive ? "secondary" : "default"}
-                            disabled={isUpdating}
-                            onClick={() => void toggleAgent(agent.id)}
-                          >
-                            {isUpdating ? "Updating..." : isActive ? "Deactivate" : "Activate"}
+                          <Button asChild size="sm">
+                            <Link href={`/onboarding?agentId=${encodeURIComponent(agent.id)}`}>
+                              Start setup
+                            </Link>
                           </Button>
-                          {isActive ? (
-                            <Button asChild size="sm" variant="outline">
-                              <Link href={`/agents/${agent.id}`}>Configure</Link>
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="outline" disabled>
-                              Configure
-                            </Button>
-                          )}
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={`/agents/${agent.id}`}>Open details</Link>
+                          </Button>
                         </div>
                       </td>
                     </tr>

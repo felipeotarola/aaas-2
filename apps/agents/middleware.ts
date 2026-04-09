@@ -5,9 +5,6 @@ import { createSupabaseMiddlewareClient } from "@/lib/supabase/middleware"
 const LOGIN_PATH = "/login"
 const ONBOARDING_PATH = "/onboarding"
 
-// Feature flag: treat everyone as not-onboarded for testing
-const FORCE_ONBOARDING = process.env.FORCE_ONBOARDING === "true"
-
 export async function middleware(request: NextRequest) {
   const { supabase, response } = createSupabaseMiddlewareClient(request)
 
@@ -18,6 +15,7 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const isLoginRoute = pathname === LOGIN_PATH
   const isOnboardingRoute = pathname === ONBOARDING_PATH
+  const onboardingAgentId = request.nextUrl.searchParams.get("agentId")?.trim() ?? ""
 
   if (!user) {
     if (isLoginRoute) return response
@@ -44,17 +42,15 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
-  // Only enforce onboarding when the feature flag is enabled
-  if (FORCE_ONBOARDING) {
-    // Non-admin, not onboarded → force onboarding
-    if (!isOnboarded && !isOnboardingRoute) {
-      return NextResponse.redirect(new URL(ONBOARDING_PATH, request.url))
-    }
+  // First-login users must complete onboarding before accessing the app.
+  if (!isOnboarded && !isOnboardingRoute) {
+    return NextResponse.redirect(new URL(ONBOARDING_PATH, request.url))
+  }
 
-    // Already onboarded → don't let them back into onboarding
-    if (isOnboarded && isOnboardingRoute) {
-      return NextResponse.redirect(new URL("/", request.url))
-    }
+  // After initial onboarding, only allow onboarding route when targeting
+  // a specific agent setup flow (launched from Discover Agents).
+  if (isOnboarded && isOnboardingRoute && onboardingAgentId.length === 0) {
+    return NextResponse.redirect(new URL("/", request.url))
   }
 
   return response
