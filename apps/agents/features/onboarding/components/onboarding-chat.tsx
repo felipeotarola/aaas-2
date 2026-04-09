@@ -5,8 +5,6 @@ import { AnimatePresence } from "framer-motion"
 import { ArrowLeft, Bot, Link2, Send, Upload } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
-import { Input } from "@workspace/ui/components/input"
-import { ScrollArea } from "@workspace/ui/components/scroll-area"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   ONBOARDING_AGENTS,
@@ -42,6 +40,7 @@ function isLikelyUrl(text: string): boolean {
 export function OnboardingChat({ agentId, onBack, onComplete }: OnboardingChatProps) {
   const agent = getAgent(agentId)
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const bottomRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -62,15 +61,13 @@ export function OnboardingChat({ agentId, onBack, onComplete }: OnboardingChatPr
 
   const scrollToBottom = React.useCallback(() => {
     requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-      }
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" })
     })
   }, [])
 
   React.useEffect(() => {
     scrollToBottom()
-  }, [messages, isTyping, scrollToBottom])
+  }, [messages, isTyping, chatStep, scrollToBottom])
 
   const pushAssistant = React.useCallback(
     (
@@ -578,7 +575,7 @@ export function OnboardingChat({ agentId, onBack, onComplete }: OnboardingChatPr
       </header>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+      <div className="flex-1 overflow-y-auto p-4" ref={scrollRef}>
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
           <AnimatePresence mode="popLayout">
             {messages.map((msg) => (
@@ -593,11 +590,12 @@ export function OnboardingChat({ agentId, onBack, onComplete }: OnboardingChatPr
             ))}
             {isTyping ? <TypingIndicator key="typing" agent={agent} /> : null}
           </AnimatePresence>
+          <div ref={bottomRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Step-driven footer */}
-      <footer className="border-t px-4 py-5">{renderFooter()}</footer>
+      <footer className="shrink-0 border-t px-4 py-5">{renderFooter()}</footer>
     </div>
   )
 }
