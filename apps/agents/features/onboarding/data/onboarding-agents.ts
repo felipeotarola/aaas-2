@@ -13,6 +13,15 @@ type RuntimeAgentsResponse = {
   agents: RuntimeAgent[]
 }
 
+type ConsumerAgentSettingsRow = {
+  agentId: string
+  isActive: boolean
+}
+
+type ConsumerAgentSettingsResponse = {
+  settings: ConsumerAgentSettingsRow[]
+}
+
 type AssistantMetadataRow = {
   id: string
   runtime_agent_id: string | null
@@ -94,6 +103,29 @@ async function fetchRuntimeAgents(): Promise<RuntimeAgent[]> {
 
   const rows = Array.isArray(payload?.agents) ? payload.agents : []
   return rows.map((row) => normalizeRuntimeAgent(row)).filter((row): row is RuntimeAgent => row !== null)
+}
+
+async function fetchActiveAgentIds(): Promise<Set<string>> {
+  try {
+    const response = await fetch("/api/consumer/agents/settings", { cache: "no-store" })
+    const payload = (await response.json().catch(() => null)) as
+      | (ConsumerAgentSettingsResponse & { error?: string })
+      | null
+
+    if (!response.ok) {
+      return new Set()
+    }
+
+    const rows = Array.isArray(payload?.settings) ? payload.settings : []
+    const activeAgentIds = rows
+      .filter((row) => row?.isActive === true)
+      .map((row) => (typeof row.agentId === "string" ? row.agentId.trim() : ""))
+      .filter(Boolean)
+
+    return new Set(activeAgentIds)
+  } catch {
+    return new Set()
+  }
 }
 
 async function fetchAssistantsMetadata(): Promise<Map<string, AssistantMetadata>> {
@@ -291,10 +323,11 @@ function buildSuggestions(category: string): string[] {
 }
 
 export async function fetchOnboardingAgents(): Promise<OnboardingAgent[]> {
-  const [runtimeAgents, metadata, catalogMetadata] = await Promise.all([
+  const [runtimeAgents, metadata, catalogMetadata, activeAgentIds] = await Promise.all([
     fetchRuntimeAgents(),
     fetchAssistantsMetadata(),
     fetchAgentCatalogMetadata(),
+    fetchActiveAgentIds(),
   ])
 
   return runtimeAgents.map((agent) => {
@@ -326,6 +359,7 @@ export async function fetchOnboardingAgents(): Promise<OnboardingAgent[]> {
       status: agent.status,
       workspace: agent.workspace,
       primaryChannel: meta?.primaryChannel ?? null,
+      isAlreadySelected: activeAgentIds.has(agent.id),
     }
   })
 }

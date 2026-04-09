@@ -19,6 +19,7 @@ export type OnboardingAgent = {
   status: "published" | "draft" | "paused"
   workspace: string
   primaryChannel?: string | null
+  isAlreadySelected: boolean
 }
 
 /** Data collected during the onboarding chat */

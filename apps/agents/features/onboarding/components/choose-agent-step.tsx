@@ -94,9 +94,16 @@ function AgentCard({
         >
           <Icon className="size-6 text-white" />
         </div>
-        <span className={cn("inline-flex border px-2 py-0.5 text-xs capitalize", statusBadgeClass(agent.status))}>
-          {agent.status}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          {agent.isAlreadySelected ? (
+            <span className="inline-flex border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs text-blue-700">
+              Already selected
+            </span>
+          ) : null}
+          <span className={cn("inline-flex border px-2 py-0.5 text-xs capitalize", statusBadgeClass(agent.status))}>
+            {agent.status}
+          </span>
+        </div>
       </div>
 
       <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">

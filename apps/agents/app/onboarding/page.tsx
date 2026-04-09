@@ -35,8 +35,17 @@ export default function OnboardingPage() {
     try {
       const runtimeAgents = await fetchOnboardingAgents()
       setAvailableAgents(runtimeAgents)
+      setSelectedAgentId((current) => {
+        if (current && runtimeAgents.some((agent) => agent.id === current)) {
+          return current
+        }
+
+        const alreadySelected = runtimeAgents.find((agent) => agent.isAlreadySelected)
+        return alreadySelected?.id ?? null
+      })
     } catch (error) {
       setAvailableAgents([])
+      setSelectedAgentId(null)
       setAgentsError(error instanceof Error ? error.message : "Failed to load agents")
     } finally {
       setIsAgentsLoading(false)
