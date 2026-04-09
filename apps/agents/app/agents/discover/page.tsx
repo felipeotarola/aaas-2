@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Settings2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { AppShell } from "@workspace/ui/components/app-shell"
+import { isSelectableConsumerCatalogAgent } from "@/app/agents/data/openclaw-agent-visibility"
 import { fetchConsumerAgentSettings } from "@/app/agents/data/consumer-agent-settings-client"
 import type { CatalogAgent, ConsumerAgentSetting } from "@/app/agents/data/contracts"
 import { fetchOpenClawAgents } from "@/app/agents/data/openclaw-agents-client"
@@ -77,7 +78,7 @@ export default function ConsumerDiscoverAgentsPage() {
 
   const isLoading = isCatalogLoading || isSettingsLoading
   const visibleCatalogItems = React.useMemo(
-    () => catalogItems.filter((agent) => !activeIds.has(agent.id)),
+    () => catalogItems.filter((agent) => !activeIds.has(agent.id) && isSelectableConsumerCatalogAgent(agent)),
     [activeIds, catalogItems],
   )
 
