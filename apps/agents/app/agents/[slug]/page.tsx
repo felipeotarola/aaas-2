@@ -61,9 +61,9 @@ export default function ConsumerAgentDetailPage() {
     loginMessage: whatsAppLoginMessage,
     error: whatsAppError,
     isUpdating: isUpdatingWhatsApp,
+    isPollingStatus: isPollingWhatsAppStatus,
     setAccountId: setWhatsAppAccountId,
     startLogin: handleStartWhatsAppLogin,
-    waitLogin: handleWaitWhatsAppLogin,
     disconnect: handleDisconnectWhatsApp,
     applySetting: applyWhatsAppSetting,
     reset: resetWhatsAppState,
@@ -358,10 +358,10 @@ export default function ConsumerAgentDetailPage() {
                 qrDataUrl={whatsAppQrDataUrl}
                 loginMessage={whatsAppLoginMessage}
                 isSaving={isUpdatingWhatsApp}
+                isPollingStatus={isPollingWhatsAppStatus}
                 error={whatsAppError}
                 onAccountIdChange={setWhatsAppAccountId}
                 onGenerateQr={() => void handleStartWhatsAppLogin()}
-                onCheckStatus={() => void handleWaitWhatsAppLogin()}
                 onDisconnect={() => void handleDisconnectWhatsApp()}
               />
 

@@ -1,7 +1,7 @@
 import "server-only"
 
 import { constants as fsConstants } from "node:fs"
-import { access, mkdir, readFile } from "node:fs/promises"
+import { access, mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 
@@ -39,6 +39,33 @@ type OpenClawConfig = {
 }
 
 const AGENT_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i
+const MEMORY_FILE_NAME = "MEMORY.md"
+const MEMORY_DIR_NAME = "memory"
+
+const MEMORY_FILE_TEMPLATE = `# MEMORY.md
+
+Curated long-term memory for this agent.
+
+Use this file for durable notes worth carrying across sessions, such as:
+- stable preferences
+- important decisions
+- recurring projects
+- useful context about the user
+
+Keep it concise and privacy-aware.
+
+## Memory policy
+
+- Daily notes live in \`memory/YYYY-MM-DD.md\`
+- Long-term distilled context lives here
+- Sensitive, secret, or unusually personal details should not be stored here without explicit user approval
+- Prefer short, durable notes over verbose logs
+`
+
+const DAILY_MEMORY_TEMPLATE = `# Daily Memory
+
+- Initialized per-agent memory scaffold.
+`
 
 export class ConsumerAgentSettingsError extends Error {
   constructor(
@@ -239,6 +266,25 @@ async function resolveWorkspaceRoot(): Promise<string> {
   return roots[0] ?? "/tmp/openclaw/workspace"
 }
 
+async function writeFileIfMissing(filePath: string, content: string): Promise<void> {
+  try {
+    await access(filePath, fsConstants.F_OK)
+    return
+  } catch {
+    await writeFile(filePath, content, "utf8")
+  }
+}
+
+async function ensureWorkspaceMemoryScaffold(workspacePath: string): Promise<void> {
+  const memoryDirPath = path.join(workspacePath, MEMORY_DIR_NAME)
+  await mkdir(memoryDirPath, { recursive: true })
+
+  await writeFileIfMissing(path.join(workspacePath, MEMORY_FILE_NAME), MEMORY_FILE_TEMPLATE)
+
+  const today = new Date().toISOString().slice(0, 10)
+  await writeFileIfMissing(path.join(memoryDirPath, `${today}.md`), DAILY_MEMORY_TEMPLATE)
+}
+
 export async function resolveWorkspaceForRef(workspaceRef: string): Promise<WorkspaceResolution> {
   const workspaceRoot = await resolveWorkspaceRoot()
 
@@ -252,6 +298,7 @@ export async function resolveWorkspaceForRef(workspaceRef: string): Promise<Work
 async function ensureWorkspaceDirectory(workspaceRef: string): Promise<WorkspaceResolution> {
   const resolution = await resolveWorkspaceForRef(workspaceRef)
   await mkdir(resolution.workspacePath, { recursive: true })
+  await ensureWorkspaceMemoryScaffold(resolution.workspacePath)
   return resolution
 }
 

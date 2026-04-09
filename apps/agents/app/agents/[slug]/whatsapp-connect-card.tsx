@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { CheckCircle2, Loader2, MessageCircle, RefreshCcw } from "lucide-react"
+import { CheckCircle2, Loader2, MessageCircle } from "lucide-react"
 import Image from "next/image"
 
 import { Button } from "@workspace/ui/components/button"
@@ -15,10 +15,10 @@ type WhatsAppConnectCardProps = {
   qrDataUrl: string | null
   loginMessage: string | null
   isSaving: boolean
+  isPollingStatus: boolean
   error: string | null
   onAccountIdChange: (value: string) => void
   onGenerateQr: () => void
-  onCheckStatus: () => void
   onDisconnect: () => void
 }
 
@@ -26,7 +26,13 @@ export function WhatsAppConnectCard(props: WhatsAppConnectCardProps) {
   const connected = Boolean(props.connection?.connected)
   const hasQr = Boolean(props.qrDataUrl)
 
-  const statusLabel = connected ? "Connected" : hasQr ? "Waiting for scan" : "Not connected"
+  const statusLabel = connected
+    ? "Connected"
+    : props.isPollingStatus
+      ? "Checking status"
+      : hasQr
+        ? "Waiting for scan"
+        : "Not connected"
 
   const statusClassName = connected
     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
@@ -45,13 +51,13 @@ export function WhatsAppConnectCard(props: WhatsAppConnectCardProps) {
       </div>
 
       <p className="text-sm text-muted-foreground">
-        Generate a WhatsApp QR code, scan it from Linked Devices, then confirm connection.
+        Generate a WhatsApp QR code, scan it from Linked Devices, then OpenClaw checks status automatically.
       </p>
 
       <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
         <li>Set account id (default is usually fine).</li>
         <li>Click Generate QR and scan with WhatsApp → Linked Devices.</li>
-        <li>Click Check status until the channel shows connected.</li>
+        <li>Wait while status polling runs automatically.</li>
       </ol>
 
       {props.connection ? (
@@ -92,10 +98,12 @@ export function WhatsAppConnectCard(props: WhatsAppConnectCardProps) {
           {props.isSaving ? <Loader2 className="mr-1 size-4 animate-spin" /> : <MessageCircle className="mr-1 size-4" />}
           {props.isSaving ? "Working..." : hasQr ? "Regenerate QR" : "Generate QR"}
         </Button>
-        <Button type="button" variant="secondary" onClick={props.onCheckStatus} disabled={props.isSaving}>
-          <RefreshCcw className="mr-1 size-4" />
-          Check status
-        </Button>
+        {props.isPollingStatus ? (
+          <Button type="button" variant="secondary" disabled>
+            <Loader2 className="mr-1 size-4 animate-spin" />
+            Checking status...
+          </Button>
+        ) : null}
         <Button type="button" variant="outline" onClick={props.onDisconnect} disabled={props.isSaving || !props.connection}>
           Disconnect
         </Button>
