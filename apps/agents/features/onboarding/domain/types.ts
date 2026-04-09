@@ -31,6 +31,16 @@ export type OnboardingCollectedData = {
   channels: ChannelChoice[]
 }
 
+export type OnboardingProgressSnapshot = {
+  chatStep: ChatStepId
+  collected: OnboardingCollectedData
+}
+
+export type PersistedOnboardingProgress = OnboardingProgressSnapshot & {
+  agentId: string
+  updatedAt: string | null
+}
+
 export type ChannelChoice = "whatsapp" | "telegram"
 
 export type KnowledgeSource =

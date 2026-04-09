@@ -20,7 +20,13 @@ export function useOnboardingGuard() {
       if (!mounted) return
 
       const hasScopedAgentSetup = new URL(window.location.href).searchParams.get("agentId")?.trim().length
-      if (isAdmin || (isOnboarded && !hasScopedAgentSetup)) {
+      // Allow scoped agent setups (from Discover) even for onboarded users and admins
+      if (hasScopedAgentSetup) {
+        setIsChecking(false)
+        return
+      }
+
+      if (isAdmin || isOnboarded) {
         router.replace("/")
         return
       }

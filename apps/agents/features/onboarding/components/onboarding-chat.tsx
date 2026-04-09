@@ -12,6 +12,8 @@ import {
   type KnowledgeSource,
   type OnboardingAgent,
   type OnboardingCollectedData,
+  type OnboardingProgressSnapshot,
+  type PersistedOnboardingProgress,
 } from "../domain/types"
 import {
   type ChatMessage,
@@ -20,6 +22,7 @@ import {
   makeMsg,
 } from "./chat-ui"
 import { useOnboardingChannelConnections } from "../hooks/use-onboarding-channel-connections"
+import { buildOnboardingResumePrompt } from "../utils/onboarding-chat-resume"
 import { OnboardingChatFooter } from "./onboarding-chat-footer"
 
 type OnboardingChatProps = {
@@ -27,6 +30,8 @@ type OnboardingChatProps = {
   onBack: () => void
   onComplete: (data: OnboardingCollectedData) => Promise<void> | void
   isCompleting?: boolean
+  initialProgress?: PersistedOnboardingProgress | null
+  onProgressChange?: (progress: OnboardingProgressSnapshot) => void
 }
 
 function isLikelyUrl(text: string): boolean {
@@ -38,6 +43,8 @@ export function OnboardingChat({
   onBack,
   onComplete,
   isCompleting = false,
+  initialProgress = null,
+  onProgressChange,
 }: OnboardingChatProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const bottomRef = React.useRef<HTMLDivElement>(null)
@@ -45,7 +52,7 @@ export function OnboardingChat({
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  const [chatStep, setChatStep] = React.useState<ChatStepId>("greet")
+  const [chatStep, setChatStep] = React.useState<ChatStepId>(initialProgress?.chatStep ?? "greet")
   const [messages, setMessages] = React.useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = React.useState("")
   const [isTyping, setIsTyping] = React.useState(false)
@@ -53,11 +60,11 @@ export function OnboardingChat({
   const [isDragging, setIsDragging] = React.useState(false)
 
   // Collected data
-  const [userName, setUserName] = React.useState<string | null>(null)
-  const [agentName, setAgentName] = React.useState<string | null>(null)
-  const [agentDescription, setAgentDescription] = React.useState<string | null>(null)
-  const [sources, setSources] = React.useState<KnowledgeSource[]>([])
-  const [selectedChannels, setSelectedChannels] = React.useState<ChannelChoice[]>([])
+  const [userName, setUserName] = React.useState<string | null>(initialProgress?.collected.userName ?? null)
+  const [agentName, setAgentName] = React.useState<string | null>(initialProgress?.collected.agentName ?? null)
+  const [agentDescription, setAgentDescription] = React.useState<string | null>(initialProgress?.collected.agentDescription ?? null)
+  const [sources, setSources] = React.useState<KnowledgeSource[]>(initialProgress?.collected.knowledgeSources ?? [])
+  const [selectedChannels, setSelectedChannels] = React.useState<ChannelChoice[]>(initialProgress?.collected.channels ?? [])
   const channelConnections = useOnboardingChannelConnections({
     agentId: agent.id,
     enabled: chatStep === "connect-channels",
@@ -101,6 +108,47 @@ export function OnboardingChat({
       "ask-user-name",
     )
   }, [agent?.name, chatStep, pushAssistant])
+
+  const didResumePrompt = React.useRef(false)
+  React.useEffect(() => {
+    if (didResumePrompt.current) return
+    if (!initialProgress || chatStep === "greet") return
+
+    didResumePrompt.current = true
+    setMessages((prev) => {
+      if (prev.length > 0) return prev
+      return [makeMsg("assistant", buildOnboardingResumePrompt(chatStep))]
+    })
+  }, [initialProgress, chatStep])
+
+  const progressSnapshot = React.useMemo<OnboardingProgressSnapshot>(
+    () => ({
+      chatStep,
+      collected: {
+        userName,
+        agentName,
+        agentDescription,
+        knowledgeSources: sources,
+        channels: selectedChannels,
+      },
+    }),
+    [agentDescription, agentName, chatStep, selectedChannels, sources, userName],
+  )
+
+  React.useEffect(() => {
+    if (!onProgressChange || chatStep === "done") return
+    if (
+      chatStep === "greet"
+      && progressSnapshot.collected.userName === null
+      && progressSnapshot.collected.agentName === null
+      && progressSnapshot.collected.agentDescription === null
+      && progressSnapshot.collected.knowledgeSources.length === 0
+      && progressSnapshot.collected.channels.length === 0
+    ) return
+
+    const timer = window.setTimeout(() => onProgressChange(progressSnapshot), 350)
+    return () => window.clearTimeout(timer)
+  }, [chatStep, onProgressChange, progressSnapshot])
 
   const processAnswer = (text: string) => {
     switch (chatStep) {

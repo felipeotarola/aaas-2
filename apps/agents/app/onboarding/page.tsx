@@ -7,10 +7,19 @@ import {
   ChooseAgentStep,
   OnboardingChat,
   completeOnboarding,
+  fetchLatestOnboardingProgress,
   fetchOnboardingAgents,
+  fetchOnboardingProgressForAgent,
+  saveOnboardingProgress,
   useOnboardingGuard,
 } from "@/features/onboarding"
-import type { OnboardingStep, OnboardingCollectedData, OnboardingAgent } from "@/features/onboarding"
+import type {
+  OnboardingStep,
+  OnboardingCollectedData,
+  OnboardingAgent,
+  OnboardingProgressSnapshot,
+  PersistedOnboardingProgress,
+} from "@/features/onboarding"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 function normalizeAgentId(raw: string | null): string {
@@ -34,6 +43,7 @@ export default function OnboardingPage() {
   const { isChecking } = useOnboardingGuard()
   const [step, setStep] = React.useState<OnboardingStep>("choose-agent")
   const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(null)
+  const [initialChatProgress, setInitialChatProgress] = React.useState<PersistedOnboardingProgress | null>(null)
   const [availableAgents, setAvailableAgents] = React.useState<OnboardingAgent[]>([])
   const [isAgentsLoading, setIsAgentsLoading] = React.useState(true)
   const [agentsError, setAgentsError] = React.useState<string | null>(null)
@@ -56,25 +66,37 @@ export default function OnboardingPage() {
         : null
 
       if (requestedAgent) {
+        const progress = await fetchOnboardingProgressForAgent(requestedAgent.id)
+        setInitialChatProgress(progress)
         setSelectedAgentId(requestedAgent.id)
         setStep("chat")
       } else if (requestedAgentId) {
         setSelectedAgentId(null)
+        setInitialChatProgress(null)
         setStep("choose-agent")
         setCompletionError("The requested agent setup is unavailable. Pick another agent to continue.")
       } else {
-        setSelectedAgentId((current) => {
-          if (current && runtimeAgents.some((agent) => agent.id === current)) {
-            return current
-          }
+        const latestProgress = await fetchLatestOnboardingProgress(runtimeAgents.map((agent) => agent.id))
+        if (latestProgress) {
+          setInitialChatProgress(latestProgress)
+          setSelectedAgentId(latestProgress.agentId)
+          setStep("chat")
+        } else {
+          setInitialChatProgress(null)
+          setSelectedAgentId((current) => {
+            if (current && runtimeAgents.some((agent) => agent.id === current)) {
+              return current
+            }
 
-          const alreadySelected = runtimeAgents.find((agent) => agent.isAlreadySelected)
-          return alreadySelected?.id ?? null
-        })
+            const alreadySelected = runtimeAgents.find((agent) => agent.isAlreadySelected)
+            return alreadySelected?.id ?? null
+          })
+        }
       }
     } catch (error) {
       setAvailableAgents([])
       setSelectedAgentId(null)
+      setInitialChatProgress(null)
       setAgentsError(error instanceof Error ? error.message : "Failed to load agents")
     } finally {
       setIsAgentsLoading(false)
@@ -84,6 +106,21 @@ export default function OnboardingPage() {
   React.useEffect(() => {
     void loadAgents()
   }, [loadAgents])
+
+  const handleProgressChange = React.useCallback(
+    (progress: OnboardingProgressSnapshot) => {
+      if (!selectedAgentId) return
+
+      void saveOnboardingProgress({
+        agentId: selectedAgentId,
+        chatStep: progress.chatStep,
+        collected: progress.collected,
+      }).catch((error) => {
+        console.error("Failed to save onboarding progress", error)
+      })
+    },
+    [selectedAgentId],
+  )
 
   const handleComplete = async (data: OnboardingCollectedData) => {
     if (isCompleting) return
@@ -131,7 +168,9 @@ export default function OnboardingPage() {
         ) : null}
         <OnboardingChat
           agent={selectedAgent}
+          initialProgress={initialChatProgress?.agentId === selectedAgent.id ? initialChatProgress : null}
           isCompleting={isCompleting}
+          onProgressChange={handleProgressChange}
           onBack={() => {
             if (isScopedAgentSetup) {
               router.replace("/agents/discover")
@@ -154,7 +193,10 @@ export default function OnboardingPage() {
         isLoading={isAgentsLoading}
         error={agentsError}
         onRetry={() => void loadAgents()}
-        onSelect={setSelectedAgentId}
+        onSelect={(agentId) => {
+          setSelectedAgentId(agentId)
+          setInitialChatProgress(null)
+        }}
         onContinue={() => {
           setCompletionError(null)
           setStep("chat")

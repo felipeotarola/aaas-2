@@ -154,7 +154,7 @@ export default function ConsumerDiscoverAgentsPage() {
                         <div className="flex gap-2">
                           <Button asChild size="sm">
                             <Link href={`/onboarding?agentId=${encodeURIComponent(agent.id)}`}>
-                              Start setup
+                              Start onboarding
                             </Link>
                           </Button>
                           <Button asChild size="sm" variant="outline">

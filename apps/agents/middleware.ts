@@ -34,9 +34,9 @@ export async function middleware(request: NextRequest) {
   const isAdmin = profile?.is_admin === true
   const isOnboarded = profile?.is_onboarded === true
 
-  // Admins skip onboarding entirely
+  // Admins skip the initial onboarding gate but can do scoped agent setups
   if (isAdmin) {
-    if (isOnboardingRoute) {
+    if (isOnboardingRoute && onboardingAgentId.length === 0) {
       return NextResponse.redirect(new URL("/", request.url))
     }
     return response
