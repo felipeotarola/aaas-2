@@ -45,5 +45,6 @@ export type ChatStepId =
   | "ask-files"
   | "ask-urls"
   | "ask-channels"
+  | "connect-channels"
   | "confirm"
   | "done"

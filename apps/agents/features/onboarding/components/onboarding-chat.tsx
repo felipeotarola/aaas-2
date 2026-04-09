@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { AnimatePresence } from "framer-motion"
-import { ArrowLeft, Bot, Link2, Send, Upload } from "lucide-react"
+import { ArrowLeft, Bot } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
@@ -15,12 +15,12 @@ import {
 } from "../domain/types"
 import {
   type ChatMessage,
-  ChannelCard,
   MessageBubble,
-  SourcePill,
   TypingIndicator,
   makeMsg,
 } from "./chat-ui"
+import { useOnboardingChannelConnections } from "../hooks/use-onboarding-channel-connections"
+import { OnboardingChatFooter } from "./onboarding-chat-footer"
 
 type OnboardingChatProps = {
   agent: OnboardingAgent
@@ -58,6 +58,10 @@ export function OnboardingChat({
   const [agentDescription, setAgentDescription] = React.useState<string | null>(null)
   const [sources, setSources] = React.useState<KnowledgeSource[]>([])
   const [selectedChannels, setSelectedChannels] = React.useState<ChannelChoice[]>([])
+  const channelConnections = useOnboardingChannelConnections({
+    agentId: agent.id,
+    enabled: chatStep === "connect-channels",
+  })
 
   const scrollToBottom = React.useCallback(() => {
     requestAnimationFrame(() => {
@@ -97,8 +101,6 @@ export function OnboardingChat({
       "ask-user-name",
     )
   }, [agent?.name, chatStep, pushAssistant])
-
-  // ─── Process text answers ───────────────────────────
 
   const processAnswer = (text: string) => {
     switch (chatStep) {
@@ -150,8 +152,6 @@ export function OnboardingChat({
         break
     }
   }
-
-  // ─── Knowledge handlers ─────────────────────────────
 
   const handleAddUrl = () => {
     const url = urlInput.trim()
@@ -222,8 +222,6 @@ export function OnboardingChat({
     )
   }
 
-  // ─── Channel handlers ──────────────────────────────
-
   const toggleChannel = (ch: ChannelChoice) => {
     setSelectedChannels((prev) =>
       prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch],
@@ -244,10 +242,17 @@ export function OnboardingChat({
         selectedChannels.length > 0 ? `Selected: ${labels}` : "Skipped",
       ),
     ])
+
+    if (selectedChannels.length > 0) {
+      pushAssistant(
+        "Final step: connect your selected channels now.\n\nTelegram needs a BotFather token.\nWhatsApp needs a QR scan from Linked Devices.\n\nYou can still continue even if one channel is not connected yet.",
+        "connect-channels",
+      )
+      return
+    }
+
     showConfirmation()
   }
-
-  // ─── Confirmation ──────────────────────────────────
 
   const showConfirmation = React.useCallback(() => {
     const sourcesList =
@@ -262,13 +267,34 @@ export function OnboardingChat({
             .map((c) => (c === "whatsapp" ? "📱 WhatsApp" : "✈️ Telegram"))
             .join(", ")
         : "None (you can connect later)"
+    const channelSetupList =
+      selectedChannels.length > 0
+        ? selectedChannels
+            .map((channel) => {
+              const connected =
+                channel === "telegram"
+                  ? channelConnections.channelConnectionState.telegram
+                  : channelConnections.channelConnectionState.whatsapp
+              return `- ${channel === "telegram" ? "Telegram" : "WhatsApp"}: ${connected ? "connected" : "not connected yet"}`
+            })
+            .join("\n")
+        : "- none"
 
     pushAssistant(
-      `Here's a summary:\n\n👤 Your name: ${userName}\n🤖 Agent name: ${agentName}\n📝 Purpose: ${agentDescription}\n📚 Sources:\n${sourcesList}\n📡 Channels: ${channelsList}`,
+      `Here's a summary:\n\n👤 Your name: ${userName}\n🤖 Agent name: ${agentName}\n📝 Purpose: ${agentDescription}\n📚 Sources:\n${sourcesList}\n📡 Channels: ${channelsList}\n🔌 Channel setup:\n${channelSetupList}`,
       "confirm",
       { type: "confirmation" },
     )
-  }, [userName, agentName, agentDescription, sources, selectedChannels, pushAssistant])
+  }, [
+    channelConnections.channelConnectionState.telegram,
+    channelConnections.channelConnectionState.whatsapp,
+    userName,
+    agentName,
+    agentDescription,
+    sources,
+    selectedChannels,
+    pushAssistant,
+  ])
 
   const handleConfirm = () => {
     if (isCompleting) return
@@ -285,6 +311,7 @@ export function OnboardingChat({
   const handleRestart = () => {
     if (isCompleting) return
     pushAssistant("No worries! Let's start over. What's your name?", "ask-user-name")
+    channelConnections.resetState()
     setUserName(null)
     setAgentName(null)
     setAgentDescription(null)
@@ -292,11 +319,8 @@ export function OnboardingChat({
     setSelectedChannels([])
   }
 
-  // ─── Text input handlers ───────────────────────────
-
   const handleChoiceSelect = (value: string) => {
     if (value === "__custom__") {
-      // Focus the appropriate input for manual entry
       if (chatStep === "ask-agent-description") {
         textareaRef.current?.focus()
       } else {
@@ -324,226 +348,22 @@ export function OnboardingChat({
     }
   }
 
-  // ─── Step-driven footer ────────────────────────────
-
-  const renderFooter = () => {
-    switch (chatStep) {
-      case "ask-user-name":
-      case "ask-agent-name":
-        return (
-          <div className="mx-auto flex max-w-2xl items-center gap-3">
-            <input
-              ref={inputRef}
-              placeholder={
-                chatStep === "ask-user-name"
-                  ? "Your name…"
-                  : "Agent name…"
-              }
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-12 w-full rounded-xl border px-4 text-base focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-              autoFocus
-            />
-            <Button
-              size="lg"
-              className="h-12 w-12 shrink-0 rounded-xl"
-              onClick={handleSend}
-              disabled={!inputValue.trim() || isTyping}
-              aria-label="Send"
-            >
-              <Send className="size-5" />
-            </Button>
-          </div>
-        )
-
-      case "ask-agent-description":
-        return (
-          <div className="mx-auto max-w-2xl space-y-3">
-            <textarea
-              ref={textareaRef}
-              placeholder="Tell me about what your agent should do, your goals… (or skip if you prefer)"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSend()
-                }
-              }}
-              rows={4}
-              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-xl border px-4 py-3 text-base leading-relaxed focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-              autoFocus
-            />
-            <div className="flex justify-end gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setMessages((prev) => [...prev, makeMsg("user", "Skipped")])
-                  processAnswer("General assistant")
-                }}
-              >
-                Skip
-              </Button>
-              <Button
-                size="sm"
-                className="gap-1.5"
-                onClick={handleSend}
-                disabled={!inputValue.trim() || isTyping}
-              >
-                <Send className="size-3.5" />
-                Continue
-              </Button>
-            </div>
-          </div>
-        )
-
-      case "ask-files":
-        return (
-          <div className="mx-auto max-w-2xl space-y-3">
-            {fileSources.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {sources.map((source, i) =>
-                  source.type === "file" ? (
-                    <SourcePill
-                      key={`file-${i}`}
-                      source={source}
-                      onRemove={() => removeSource(i)}
-                    />
-                  ) : null,
-                )}
-              </div>
-            )}
-            <div
-              onDragOver={(e) => {
-                e.preventDefault()
-                setIsDragging(true)
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={cn(
-                "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-10 transition-colors",
-                isDragging
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-primary/50",
-              )}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handleFileChange}
-                accept=".pdf,.doc,.docx,.txt,.md,.csv,.json"
-              />
-              <Upload className="size-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                Click to upload files or drag and drop
-              </p>
-            </div>
-            <div className="flex justify-end">
-              <Button size="sm" onClick={handleFilesDone}>
-                {fileSources.length > 0 ? "Continue" : "Skip"}
-              </Button>
-            </div>
-          </div>
-        )
-
-      case "ask-urls":
-        return (
-          <div className="mx-auto max-w-2xl space-y-3">
-            {urlSources.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {sources.map((source, i) =>
-                  source.type === "url" ? (
-                    <SourcePill
-                      key={`url-${i}`}
-                      source={source}
-                      onRemove={() => removeSource(i)}
-                    />
-                  ) : null,
-                )}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Link2 className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  placeholder="https://…"
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      handleAddUrl()
-                    }
-                  }}
-                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-12 w-full rounded-xl border pl-10 pr-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                  autoFocus
-                />
-              </div>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={handleAddUrl}
-                disabled={!urlInput.trim()}
-                className="h-12 rounded-xl"
-              >
-                Add
-              </Button>
-            </div>
-            <div className="flex justify-end">
-              <Button size="sm" onClick={handleUrlsDone}>
-                {urlSources.length > 0 ? "Continue" : "Skip"}
-              </Button>
-            </div>
-          </div>
-        )
-
-      case "ask-channels":
-        return (
-          <div className="mx-auto max-w-2xl space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <ChannelCard
-                channel="whatsapp"
-                selected={selectedChannels.includes("whatsapp")}
-                onToggle={() => toggleChannel("whatsapp")}
-              />
-              <ChannelCard
-                channel="telegram"
-                selected={selectedChannels.includes("telegram")}
-                onToggle={() => toggleChannel("telegram")}
-              />
-            </div>
-            <div className="flex justify-end">
-              <Button size="sm" onClick={handleChannelsContinue}>
-                {selectedChannels.length > 0 ? "Continue" : "Skip"}
-              </Button>
-            </div>
-          </div>
-        )
-
-      case "done":
-        return (
-          <div className="mx-auto flex max-w-2xl items-center justify-center py-2">
-            <p className="text-sm text-muted-foreground">
-              Setting up your agent…
-            </p>
-          </div>
-        )
-
-      default:
-        return null
-    }
+  const handleSkipDescription = () => {
+    setMessages((prev) => [...prev, makeMsg("user", "Skipped")])
+    processAnswer("General assistant")
   }
 
-  // ─── Render ────────────────────────────────────────
+  const handleFileDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleFileDragLeave = () => {
+    setIsDragging(false)
+  }
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <header className="flex items-center gap-3 border-b px-4 py-3">
         <Button
           size="icon-sm"
@@ -571,7 +391,6 @@ export function OnboardingChat({
         </div>
       </header>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4" ref={scrollRef}>
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
           <AnimatePresence mode="popLayout">
@@ -592,8 +411,41 @@ export function OnboardingChat({
         </div>
       </div>
 
-      {/* Step-driven footer */}
-      <footer className="shrink-0 border-t px-4 py-5">{renderFooter()}</footer>
+      <footer className="shrink-0 border-t px-4 py-5">
+        <OnboardingChatFooter
+          chatStep={chatStep}
+          inputRef={inputRef}
+          textareaRef={textareaRef}
+          fileInputRef={fileInputRef}
+          inputValue={inputValue}
+          setInputValue={setInputValue}
+          isTyping={isTyping}
+          onSend={handleSend}
+          onInputKeyDown={handleKeyDown}
+          onSkipDescription={handleSkipDescription}
+          sources={sources}
+          fileSources={fileSources}
+          urlSources={urlSources}
+          removeSource={removeSource}
+          isDragging={isDragging}
+          onDragOver={handleFileDragOver}
+          onDragLeave={handleFileDragLeave}
+          onDrop={handleDrop}
+          onOpenFilePicker={() => fileInputRef.current?.click()}
+          onFileChange={handleFileChange}
+          onFilesDone={handleFilesDone}
+          urlInput={urlInput}
+          setUrlInput={setUrlInput}
+          onAddUrl={handleAddUrl}
+          onUrlsDone={handleUrlsDone}
+          selectedChannels={selectedChannels}
+          toggleChannel={toggleChannel}
+          onChannelsContinue={handleChannelsContinue}
+          channelConnections={channelConnections}
+          isCompleting={isCompleting}
+          onConnectChannelsContinue={showConfirmation}
+        />
+      </footer>
     </div>
   )
 }
